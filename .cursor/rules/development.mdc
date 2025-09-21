@@ -1,0 +1,676 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+
+# Next.js 14 Development Rules
+
+## Core Architecture Principles
+
+### 1. Component Reusability - MANDATORY
+
+- **Always create reusable components** before writing custom ones
+- Use a component library structure: `/components/ui/`, `/components/forms/`, `/components/layout/`
+- Create generic components that accept props for customization
+- Use TypeScript interfaces for consistent prop definitions
+- Build compound components for complex UI patterns
+- Example structure:
+
+  ```typescript
+  // ✅ Good - Reusable
+  <Button variant="primary" size="lg" onClick={handleClick}>Submit</Button>
+
+  // ❌ Bad - Hardcoded
+  <button className="bg-blue-500 text-white px-4 py-2">Submit</button>
+  ```
+
+### 2. Server-First Architecture - STRICT RULE
+
+- **Parent components MUST be Server Components by default**
+- Only nest Client Components inside Server Components when absolutely required
+- Use `"use client"` directive ONLY for:
+  - User interactions (onClick, onChange, form submissions)
+  - Browser APIs (localStorage, sessionStorage, window)
+  - React hooks (useState, useEffect, useReducer)
+  - Real-time features (WebSocket, EventSource)
+- Pattern to follow:
+  ```typescript
+  // ✅ Server Component (Parent)
+  async function DashboardPage() {
+    const data = await fetchServerData();
+    return (
+      <div>
+        <ServerHeader />
+        <InteractiveWidget data={data} /> {/* Client Component nested */}
+      </div>
+    );
+  }
+  ```
+
+### 3. Server Component Optimization - ENFORCE ALWAYS
+
+- Keep ALL possible logic on the server side
+- Leverage Server Components for:
+  - Data fetching and processing
+  - Authentication and authorization
+  - Theme and configuration resolution
+  - Static content rendering
+  - Database queries
+- Push client boundaries as deep as possible in component tree
+- Use React 18 Suspense for loading states
+- Implement server-side caching strategies
+
+### 4. Server-Side Theming - CURRENT IMPLEMENTATION
+
+- **Continue using existing server-side theming system**
+- Resolve all themes on server before rendering
+- Use CSS custom properties injected server-side
+- Theme resolution flow:
+  ```typescript
+  // Server Component - Theme Resolution
+  async function ThemedLayout({ children }: { children: React.ReactNode }) {
+    const theme = await getCurrentTheme(); // Server-side
+    return (
+      <div
+        style={{
+          '--primary': theme.primary,
+          '--secondary': theme.secondary,
+        }}>
+        {children}
+      </div>
+    );
+  }
+  ```
+- Never resolve themes on client side
+- Cache theme data appropriately
+
+### 5. XState v5 for User Flows - MANDATORY FOR ALL FLOWS
+
+- **Create XState machine for EVERY user flow**
+- Always include proper loading states: `idle` → `loading` → `success`/`error`
+- Use XState v5 syntax with `setup()` function
+- Required states for every machine:
+  ```typescript
+  const userFlowMachine = setup({
+    types: {} as {
+      context: FlowContext;
+      events: FlowEvents;
+    },
+  }).createMachine({
+    id: 'userFlow',
+    initial: 'idle',
+    states: {
+      idle: {
+        on: { START: 'loading' },
+      },
+      loading: {
+        invoke: {
+          src: 'performAction',
+          onDone: 'success',
+          onError: 'error',
+        },
+      },
+      success: {
+        /* ... */
+      },
+      error: {
+        /* ... */
+      },
+    },
+  });
+  ```
+- Implement loading spinners/skeletons for all loading states
+- Handle error states gracefully with retry mechanisms
+
+### 6. Component Inventory Check - BEFORE ANY NEW COMPONENT
+
+- **ALWAYS check existing components before creating new ones**
+- Follow this exact order:
+  1. Search `/components/ui/` for base components
+  2. Check `/components/forms/` for form elements
+  3. Look in `/components/layout/` for structural components
+  4. Review `/components/features/` for feature-specific components
+  5. Only create new component if none exist
+- Maintain component documentation with examples
+- Use composition to extend existing components instead of creating new ones
+
+### 7. Server-Side API Calls - NO CLIENT API CALLS
+
+- **ALL API calls MUST happen on server side**
+- Use Server Actions for mutations:
+  ```typescript
+  // ✅ Server Action
+  async function updateUser(formData: FormData) {
+    'use server';
+    const result = await api.updateUser(formData);
+    revalidatePath('/dashboard');
+    return result;
+  }
+  ```
+- Use Server Components for data fetching:
+  ```typescript
+  // ✅ Server Component
+  async function UserProfile({ userId }: { userId: string }) {
+    const user = await fetchUser(userId); // Server-side
+    return <UserCard user={user} />;
+  }
+  ```
+- Never use fetch(), axios, or any HTTP client in Client Components
+- Pass data down as props from Server to Client Components
+
+## Implementation Guidelines
+
+### Required File Structure
+
+```
+/app/
+  /(routes)/
+    page.tsx     # Server Components only
+    layout.tsx   # Server Components only
+    loading.tsx  # Loading boundaries
+    error.tsx    # Error boundaries
+/components/
+  /ui/           # Base reusable components (Button, Input, etc.)
+  /forms/        # Form-specific components
+  /layout/       # Layout components (Header, Sidebar, etc.)
+  /features/     # Feature-specific components
+/lib/
+  /actions/      # Server Actions only
+  /xstate/       # State machines (v5)
+/types/          # TypeScript definitions
+```
+
+### Mandatory Development Workflow
+
+1. **Always start with Server Components**
+2. **Check component inventory before coding anything**
+3. **Create XState machine for any user interaction flow**
+4. **Implement loading and error states**
+5. **Test server-side theming**
+6. **Validate all API calls are server-side**
+
+### Strict Performance Rules
+
+- Use `loading.tsx` files for ALL route-level loading states
+- Implement proper `error.tsx` boundaries for ALL routes
+- Optimize images with Next.js Image component ALWAYS
+- Cache server-side data appropriately
+- Use streaming for any data fetching
+- Minimize client bundle size
+
+### Enforcement Checklist (BEFORE ANY COMMIT)
+
+- [ ] Component checked against existing inventory
+- [ ] Parent component is Server Component
+- [ ] Client components only where absolutely necessary
+- [ ] XState machine implemented for user flow
+- [ ] Loading states properly handled
+- [ ] API calls are server-side only
+- [ ] Server-side theming maintained
+- [ ] TypeScript types defined (no `any`)
+- [ ] Error boundaries implemented
+- [ ] Performance optimizations applied
+
+### Code Quality Standards
+
+- Use TypeScript strictly (ZERO `any` types allowed)
+- Implement proper prop validation with interfaces
+- Use ESLint and Prettier consistently
+- Document all state machines and complex components
+- Use meaningful, descriptive names
+- Follow Next.js 14 App Router best practices strictly
+
+---
+
+## 🚀 Next.js 14 + XState Architecture Pattern
+
+### Core Architecture Principles
+
+- **Server-First Data Fetching**: All initial data fetched on server-side
+- **Client XState Management**: All interactions handled by XState machines
+- **Props as Machine Input**: Server data passed as machine input, not context
+- **Single Machine Instance**: One XState machine per page/feature
+- **Local State for UI**: Use React state only for UI-specific concerns
+
+### Required Pattern Structure
+
+#### 1. Server Component (Page Level)
+
+```typescript
+// app/[tenantId]/[chatbotId]/feature/page.tsx
+'use server';
+import { getServerData } from '@/app/actions/server-actions';
+import ClientFeatureComponent from './ClientFeatureComponent';
+
+export default async function FeaturePage({ params }: { params: { tenantId: string; chatbotId: string } }) {
+  // Fetch all initial data on server
+  const initialData = await getServerData(params.chatbotId);
+
+  return <ClientFeatureComponent initialData={initialData} tenantId={params.tenantId} chatbotId={params.chatbotId} />;
+}
+```
+
+#### 2. XState Context Provider
+
+```typescript
+// providers/FeatureProvider.tsx
+'use client';
+import { createContext, useContext, ReactNode } from 'react';
+import { useMachine } from '@xstate/react';
+import { featureMachine } from '@/machines/featureMachine';
+
+interface FeatureProviderProps {
+  children: ReactNode;
+  initialData: ServerDataType;
+  tenantId: string;
+  chatbotId: string;
+}
+
+interface FeatureContextType {
+  state: any;
+  send: any;
+}
+
+const FeatureContext = createContext<FeatureContextType | null>(null);
+
+export function FeatureProvider({ children, initialData, tenantId, chatbotId }: FeatureProviderProps) {
+  const [state, send] = useMachine(featureMachine, {
+    input: {
+      initialData,
+      tenantId,
+      chatbotId,
+    },
+  });
+
+  return <FeatureContext.Provider value={{ state, send }}>{children}</FeatureContext.Provider>;
+}
+
+export function useFeature() {
+  const context = useContext(FeatureContext);
+  if (!context) {
+    throw new Error('useFeature must be used within FeatureProvider');
+  }
+  return context;
+}
+```
+
+#### 3. Client Component with XState Hook
+
+```typescript
+// components/ClientFeatureComponent.tsx
+'use client';
+import { useFeature } from '@/providers/FeatureProvider';
+
+export default function ClientFeatureComponent() {
+  const { state, send } = useFeature();
+
+  return (
+    <div>
+      {/* Render based on machine state */}
+      {state.context.data.map((item) => (
+        <div key={item.id}>{item.name}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+#### 4. Page with Provider
+
+```typescript
+// app/[tenantId]/[chatbotId]/feature/page.tsx
+'use server';
+import { getServerData } from '@/app/actions/server-actions';
+import { FeatureProvider } from '@/providers/FeatureProvider';
+import ClientFeatureComponent from './ClientFeatureComponent';
+
+export default async function FeaturePage({ params }: { params: { tenantId: string; chatbotId: string } }) {
+  const initialData = await getServerData(params.chatbotId);
+
+  return (
+    <FeatureProvider initialData={initialData} tenantId={params.tenantId} chatbotId={params.chatbotId}>
+      <ClientFeatureComponent />
+    </FeatureProvider>
+  );
+}
+```
+
+#### 5. XState Machine with Input
+
+```typescript
+// machines/featureMachine.ts
+import { setup, assign } from 'xstate';
+
+export const featureMachine = setup({
+  types: {
+    input: {} as {
+      initialData: ServerDataType;
+      tenantId: string;
+      chatbotId: string;
+    },
+    context: {} as {
+      data: ServerDataType;
+      loading: boolean;
+      error: string | null;
+    },
+  },
+  actions: {
+    initializeData: assign({
+      data: ({ input }) => input.initialData,
+    }),
+    setLoading: assign({
+      loading: ({ event }) => event.loading,
+    }),
+    updateData: assign({
+      data: ({ event }) => event.data,
+    }),
+  },
+}).createMachine({
+  id: 'feature',
+  initial: 'idle',
+  context: ({ input }) => ({
+    data: input.initialData, // Initialize with server data
+    loading: false,
+    error: null,
+  }),
+  states: {
+    idle: {
+      entry: 'initializeData',
+      on: {
+        REFRESH: 'loading',
+        UPDATE: {
+          actions: 'updateData',
+        },
+      },
+    },
+    loading: {
+      entry: 'setLoading',
+      invoke: {
+        src: 'fetchData',
+        onDone: {
+          target: 'idle',
+          actions: 'updateData',
+        },
+        onError: {
+          target: 'error',
+          actions: 'setError',
+        },
+      },
+    },
+    error: {
+      on: {
+        RETRY: 'loading',
+      },
+    },
+  },
+});
+```
+
+### Implementation Checklist
+
+#### Server-Side Setup
+
+- [ ] Create server component for data fetching
+- [ ] Use `'use server'` directive for server actions
+- [ ] Fetch all initial data in server component
+- [ ] Pass data as props to client component
+
+#### Client-Side Setup
+
+- [ ] Create client component with `'use client'`
+- [ ] Initialize XState machine with server data as input
+- [ ] Use machine context for all data rendering
+- [ ] Handle all interactions through machine events
+
+#### XState Machine Setup
+
+- [ ] Define input types with server data structure
+- [ ] Initialize context with input data
+- [ ] Create actions for data updates
+- [ ] Handle loading, success, and error states
+- [ ] Use actors for API calls
+
+#### Data Flow Pattern
+
+- [ ] Server data → Machine input → Machine context → UI
+- [ ] User interactions → Machine events → Machine actions → UI updates
+- [ ] API calls → Machine actors → Machine context → UI updates
+
+### Example Implementation
+
+#### Server Action
+
+```typescript
+// app/actions/feature-actions.ts
+'use server';
+
+export async function getFeatureData(chatbotId: string) {
+  const response = await fetch(`${process.env.API_URL}/features/${chatbotId}`);
+  return response.json();
+}
+```
+
+#### Client Component
+
+```typescript
+// components/FeatureList.tsx
+'use client';
+import { useMachine } from '@xstate/react';
+import { featureMachine } from '@/machines/featureMachine';
+
+export default function FeatureList({ initialFeatures, chatbotId }) {
+  const [state, send] = useMachine(featureMachine, {
+    input: {
+      initialData: initialFeatures,
+      chatbotId,
+    },
+  });
+
+  return (
+    <div>
+      {state.context.loading && <div>Loading...</div>}
+      {state.context.error && <div>Error: {state.context.error}</div>}
+      {state.context.data.map((feature) => (
+        <div key={feature.id}>
+          <h3>{feature.name}</h3>
+          <button onClick={() => send({ type: 'UPDATE', data: feature })}>Update</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Key Benefits
+
+- ✅ **Fast Initial Render**: Server data pre-populated
+- ✅ **Consistent State Management**: XState handles all interactions
+- ✅ **Type Safety**: Input types ensure data structure
+- ✅ **Performance**: No client-side data fetching on initial load
+- ✅ **Maintainability**: Clear separation of concerns
+- ✅ **Clean Component Architecture**: Context API eliminates prop drilling
+- ✅ **Reusable Hooks**: Custom hooks provide clean access to machine state
+- ✅ **Single Source of Truth**: One machine instance shared across all components
+
+### Context API Pattern Benefits
+
+#### Why Use XState Context API?
+
+- **No Prop Drilling**: Child components access machine state directly via hooks
+- **Type Safety**: Custom hooks provide typed access to machine state
+- **Clean Architecture**: Separation between data fetching (server) and state management (client)
+- **Reusability**: Hooks can be used across multiple components
+- **Single Machine Instance**: One machine per feature, shared across all components
+
+#### Example Usage in Child Components
+
+```typescript
+// components/FeatureList.tsx
+'use client';
+import { useFeature } from '@/providers/FeatureProvider';
+
+export default function FeatureList() {
+  const { state, send } = useFeature();
+
+  return (
+    <div>
+      {state.context.loading && <div>Loading...</div>}
+      {state.context.data.map((item) => (
+        <div key={item.id}>
+          <h3>{item.name}</h3>
+          <button onClick={() => send({ type: 'UPDATE', data: item })}>Update</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+### Anti-Patterns to Avoid
+
+- ❌ Don't fetch data in useEffect for initial load
+- ❌ Don't use multiple machine instances
+- ❌ Don't mix server and client data fetching
+- ❌ Don't use Redux for local state management
+- ❌ Don't pass server data through multiple prop levels
+- ❌ Don't create machine instances in child components
+- ❌ Don't use useState for data that should be in XState
+
+---
+
+## 🔄 Redux-to-XState Migration Rules
+
+### Core Migration Principles
+
+- **Single Source of Truth**: Use ONE XState machine instance per feature, not multiple instances
+- **Props-Based Communication**: Pass data from parent machine context to child components via props
+- **No Separate Machine Instances**: Child components should NOT create their own machine instances
+- **Defensive Programming**: Always add null checks and type guards for API responses
+- **Comprehensive Logging**: Add debug logs to trace data flow and identify issues
+
+### Migration Checklist
+
+When migrating from Redux to XState:
+
+#### 1. XState Machine Setup
+
+- [ ] Create single machine instance in parent component
+- [ ] Add all required context properties (e.g., `scrapedUrls`, `currentUrlStatus`)
+- [ ] Implement proper actions for state updates
+- [ ] Add comprehensive logging for debugging
+
+#### 2. Component Refactoring
+
+- [ ] Remove Redux imports (`useSelector`, `useDispatch`, `store`)
+- [ ] Remove separate `useMachine()` calls in child components
+- [ ] Update component interfaces to accept data via props
+- [ ] Pass callback functions for actions (update, delete, etc.)
+
+#### 3. Data Flow Implementation
+
+- [ ] Parent component: `const [state, send] = useMachine(machine)`
+- [ ] Child components: Receive data via props, send actions via callbacks
+- [ ] API responses: Update machine context, not separate state
+- [ ] Status updates: Handle in machine actions, not component state
+
+#### 4. Error Prevention
+
+- [ ] Add null checks for all API responses: `data?.property || defaultValue`
+- [ ] Add array type guards: `Array.isArray(data) ? data.map(...) : []`
+- [ ] Add optional chaining for nested properties: `obj?.nested?.property`
+- [ ] Handle multiple API response formats gracefully
+
+#### 5. Status Management
+
+- [ ] Create pending documents when API starts
+- [ ] Update documents with real API data when complete
+- [ ] Remove status (set to `undefined`) when completed
+- [ ] Handle error states properly
+
+### Example Implementation Pattern
+
+```typescript
+// ✅ Parent Component (Single Machine Instance)
+const ParentComponent = () => {
+  const [state, send] = useMachine(myMachine);
+
+  return (
+    <ChildComponent
+      data={state.context.scrapedUrls}
+      onUpdate={(id, data) => send({ type: 'UPDATE', payload: { id, data } })}
+      onDelete={(id) => send({ type: 'DELETE', payload: { id } })}
+    />
+  );
+};
+
+// ✅ Child Component (Props-Based)
+interface ChildProps {
+  data: DataType[];
+  onUpdate: (id: string, data: any) => void;
+  onDelete: (id: string) => void;
+}
+
+const ChildComponent = ({ data, onUpdate, onDelete }: ChildProps) => {
+  // No useMachine() here - use props instead
+  return <div>{/* Render data */}</div>;
+};
+
+// ❌ AVOID: Multiple Machine Instances
+const ChildComponent = () => {
+  const [state, send] = useMachine(myMachine); // DON'T DO THIS
+  // This creates separate state that won't sync with parent
+};
+```
+
+### Common Issues & Solutions
+
+#### Issue: "Cannot read properties of undefined"
+
+**Solution**: Add null checks and optional chaining
+
+```typescript
+// ❌ Bad
+const value = data.property.nested;
+
+// ✅ Good
+const value = data?.property?.nested || defaultValue;
+```
+
+#### Issue: "map is not a function"
+
+**Solution**: Add array type guards
+
+```typescript
+// ❌ Bad
+const items = data.map((item) => item.value);
+
+// ✅ Good
+const items = Array.isArray(data) ? data.map((item) => item.value) : [];
+```
+
+#### Issue: Status remains in "pending"
+
+**Solution**: Update machine context with API response data
+
+```typescript
+// ✅ Proper status update with API data
+updateScrapedUrlsFromApiResponse: assign({
+  scrapedUrls: ({ context, event }) => {
+    const apiData = event.output?.data;
+    return context.scrapedUrls.map(doc => {
+      if (doc.status === 'pending' && /* matches current job */) {
+        return { ...apiData, status: undefined }; // Completed
+      }
+      return doc;
+    });
+  }
+})
+```
+
+### Debugging Guidelines
+
+- Add console.logs in machine actions to trace data flow
+- Log API responses to understand data structure
+- Check machine state transitions in browser dev tools
+- Verify props are being passed correctly between components

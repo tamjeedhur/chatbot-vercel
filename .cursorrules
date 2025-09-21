@@ -1,0 +1,198 @@
+# Next.js 14 Development Rules
+
+## Core Architecture Principles
+
+### 1. Component Reusability - MANDATORY
+- **Always create reusable components** before writing custom ones
+- Use a component library structure: `/components/ui/`, `/components/forms/`, `/components/layout/`
+- Create generic components that accept props for customization
+- Use TypeScript interfaces for consistent prop definitions
+- Build compound components for complex UI patterns
+- Example structure:
+  ```typescript
+  // ✅ Good - Reusable
+  <Button variant="primary" size="lg" onClick={handleClick}>Submit</Button>
+  
+  // ❌ Bad - Hardcoded
+  <button className="bg-blue-500 text-white px-4 py-2">Submit</button>
+  ```
+
+### 2. Server-First Architecture - STRICT RULE
+- **Parent components MUST be Server Components by default**
+- Only nest Client Components inside Server Components when absolutely required
+- Use `"use client"` directive ONLY for:
+  - User interactions (onClick, onChange, form submissions)
+  - Browser APIs (localStorage, sessionStorage, window)
+  - React hooks (useState, useEffect, useReducer)
+  - Real-time features (WebSocket, EventSource)
+- Pattern to follow:
+  ```typescript
+  // ✅ Server Component (Parent)
+  async function DashboardPage() {
+    const data = await fetchServerData();
+    return (
+      <div>
+        <ServerHeader />
+        <InteractiveWidget data={data} /> {/* Client Component nested */}
+      </div>
+    );
+  }
+  ```
+
+### 3. Server Component Optimization - ENFORCE ALWAYS
+- Keep ALL possible logic on the server side
+- Leverage Server Components for:
+  - Data fetching and processing
+  - Authentication and authorization
+  - Theme and configuration resolution
+  - Static content rendering
+  - Database queries
+- Push client boundaries as deep as possible in component tree
+- Use React 18 Suspense for loading states
+- Implement server-side caching strategies
+
+### 4. Server-Side Theming - CURRENT IMPLEMENTATION
+- **Continue using existing server-side theming system**
+- Resolve all themes on server before rendering
+- Use CSS custom properties injected server-side
+- Theme resolution flow:
+  ```typescript
+  // Server Component - Theme Resolution
+  async function ThemedLayout({ children }: { children: React.ReactNode }) {
+    const theme = await getCurrentTheme(); // Server-side
+    return (
+      <div style={{ 
+        '--primary': theme.primary,
+        '--secondary': theme.secondary 
+      }}>
+        {children}
+      </div>
+    );
+  }
+  ```
+- Never resolve themes on client side
+- Cache theme data appropriately
+
+### 5. XState v5 for User Flows - MANDATORY FOR ALL FLOWS
+- **Create XState machine for EVERY user flow**
+- Always include proper loading states: `idle` → `loading` → `success`/`error`
+- Use XState v5 syntax with `setup()` function
+- Required states for every machine:
+  ```typescript
+  const userFlowMachine = setup({
+    types: {} as {
+      context: FlowContext;
+      events: FlowEvents;
+    },
+  }).createMachine({
+    id: 'userFlow',
+    initial: 'idle',
+    states: {
+      idle: {
+        on: { START: 'loading' }
+      },
+      loading: {
+        invoke: {
+          src: 'performAction',
+          onDone: 'success',
+          onError: 'error'
+        }
+      },
+      success: { /* ... */ },
+      error: { /* ... */ }
+    }
+  });
+  ```
+- Implement loading spinners/skeletons for all loading states
+- Handle error states gracefully with retry mechanisms
+
+### 6. Component Inventory Check - BEFORE ANY NEW COMPONENT
+- **ALWAYS check existing components before creating new ones**
+- Follow this exact order:
+  1. Search `/components/ui/` for base components
+  2. Check `/components/forms/` for form elements
+  3. Look in `/components/layout/` for structural components
+  4. Review `/components/features/` for feature-specific components
+  5. Only create new component if none exist
+- Maintain component documentation with examples
+- Use composition to extend existing components instead of creating new ones
+
+### 7. Server-Side API Calls - NO CLIENT API CALLS
+- **ALL API calls MUST happen on server side**
+- Use Server Actions for mutations:
+  ```typescript
+  // ✅ Server Action
+  async function updateUser(formData: FormData) {
+    'use server';
+    const result = await api.updateUser(formData);
+    revalidatePath('/dashboard');
+    return result;
+  }
+  ```
+- Use Server Components for data fetching:
+  ```typescript
+  // ✅ Server Component
+  async function UserProfile({ userId }: { userId: string }) {
+    const user = await fetchUser(userId); // Server-side
+    return <UserCard user={user} />;
+  }
+  ```
+- Never use fetch(), axios, or any HTTP client in Client Components
+- Pass data down as props from Server to Client Components
+
+## Implementation Guidelines
+
+### Required File Structure
+```
+/app/
+  /(routes)/
+    page.tsx     # Server Components only
+    layout.tsx   # Server Components only
+    loading.tsx  # Loading boundaries
+    error.tsx    # Error boundaries
+/components/
+  /ui/           # Base reusable components (Button, Input, etc.)
+  /forms/        # Form-specific components
+  /layout/       # Layout components (Header, Sidebar, etc.)
+  /features/     # Feature-specific components
+/lib/
+  /actions/      # Server Actions only
+  /xstate/       # State machines (v5)
+/types/          # TypeScript definitions
+```
+
+### Mandatory Development Workflow
+1. **Always start with Server Components**
+2. **Check component inventory before coding anything**
+3. **Create XState machine for any user interaction flow**
+4. **Implement loading and error states**
+5. **Test server-side theming**
+6. **Validate all API calls are server-side**
+
+### Strict Performance Rules
+- Use `loading.tsx` files for ALL route-level loading states
+- Implement proper `error.tsx` boundaries for ALL routes
+- Optimize images with Next.js Image component ALWAYS
+- Cache server-side data appropriately
+- Use streaming for any data fetching
+- Minimize client bundle size
+
+### Enforcement Checklist (BEFORE ANY COMMIT)
+- [ ] Component checked against existing inventory
+- [ ] Parent component is Server Component
+- [ ] Client components only where absolutely necessary
+- [ ] XState machine implemented for user flow
+- [ ] Loading states properly handled
+- [ ] API calls are server-side only
+- [ ] Server-side theming maintained
+- [ ] TypeScript types defined (no `any`)
+- [ ] Error boundaries implemented
+- [ ] Performance optimizations applied
+
+### Code Quality Standards
+- Use TypeScript strictly (ZERO `any` types allowed)
+- Implement proper prop validation with interfaces
+- Use ESLint and Prettier consistently
+- Document all state machines and complex components
+- Use meaningful, descriptive names
+- Follow Next.js 14 App Router best practices strictly

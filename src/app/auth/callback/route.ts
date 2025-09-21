@@ -1,0 +1,67 @@
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
+
+export async function GET(request:Request) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get('code');
+  // console.log("helli >>>>>>>>>",requestUrl)
+  if (code) {
+    const supabase = createRouteHandlerClient({ cookies });
+    const data = await supabase.auth.exchangeCodeForSession(code);
+    console.log("this is data >>>>>>>>>>",data)
+
+
+
+  }
+
+  // URL to redirect to after sign in process completes
+  return NextResponse.redirect(`${requestUrl.origin}/sign-in`);
+}
+
+
+export const dynamic = "force-dynamic";
+
+
+
+// import { createServerClient, type CookieOptions } from '@supabase/ssr'
+// import { cookies } from 'next/headers'
+// import { NextResponse } from 'next/server'
+
+// export async function GET(request: Request) {
+//   const { searchParams } = new URL(request.url)
+//   const code = searchParams.get('code')
+//   const next = searchParams.get('next') ?? '/'
+
+//   if (code) {
+//     const cookieStore = cookies()
+
+//     const supabase = createServerClient(
+//       process.env.NEXT_PUBLIC_SUPABASE_URL!,
+//       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+//       {
+//         cookies: {
+//           get(name: string) {
+//             return cookieStore.get(name)?.value
+//           },
+//           set(name: string, value: string, options: CookieOptions) {
+//             cookieStore.set({ name, value, ...options })
+//           },
+//           remove(name: string, options: CookieOptions) {
+//             cookieStore.delete({ name, ...options })
+//           },
+//         },
+//       }
+//     )
+
+//     const { error } = await supabase.auth.exchangeCodeForSession(code)
+//     if (!error) {
+//       return NextResponse.redirect(next)
+//     }
+//   }
+
+//   // return the user to an error page with instructions
+//   return NextResponse.redirect('/auth/auth-code-error')
+// }
+
+// export const dynamic = "force-dynamic";

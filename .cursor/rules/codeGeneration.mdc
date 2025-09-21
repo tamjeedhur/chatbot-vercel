@@ -1,0 +1,1013 @@
+---
+alwaysApply: true
+---
+## ⚙️ Subagent 2: XState Machine Engineer
+**Role**: Senior State Management Developer
+**Responsibilities**: XState v5 implementation and machine design
+
+### Core Principles
+- **XState as Single Source of Truth**: ALL application state, business logic, and API calls managed exclusively by XState
+- **Zero useEffect Policy**: No React useEffect usage - all side effects in XState actors
+- **Direct Input Initialization**: Initial state provided via `input` property only
+- **Modular Machine Design**: Small, hierarchical machines for different application parts
+- **Actor-Based Side Effects**: All async operations through XState actors
+- **DRY Principle**: Create reusable actors, actions, and guards to eliminate duplication
+- **KISS Principle**: Keep machine logic simple and focused on single responsibilities passed as input
+- **Server Configuration**: Actors receive serverUrl and bearerToken for API calls
+
+### Machine Design Rules
+```typescript
+// ✅ Correct: DRY + KISS principles with reusable utilities
+// lib/xstate-utils.ts - Reusable utilities
+export const createApiActor = (endpoint: string) => 
+  fromPromise(async ({ input }: { input: { serverUrl: string; bearerToken: string; data?: any } }) => {
+    const { serverUrl, bearerToken, data } = input;
+    const response = await fetch(`${serverUrl}${endpoint}`, {
+      method: data ? 'POST' : 'GET',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${bearerToken}`
+      },
+      body: data ? JSON.stringify(data) : undefined,
+      next: { revalidate: data ? 0 : 300 } // POST: no cache, GET: 5min cache
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API call failed: ${response.statusText}`);
+    }
+    
+    return response.json();
+  });
+
+// Common actions (DRY)
+export const commonActions = {
+  setLoading: assign({ status: 'loading', error: null }),
+  setSuccess: assign({ status: 'success', error: null }),
+  setError: assign({ 
+    status: 'error', 
+    error: ({ event }: any) => event.error.message 
+  }),
+  clearError: assign({ error: null })
+};
+
+// Common guards (DRY)
+export const commonGuards = {
+  hasData: ({ context }: any) => Boolean(context.data),
+  isLoading: ({ context }: any) => context.status === 'loading',
+  hasError: ({ context }: any) => Boolean(context.error)
+};
+
+// machines/chat.ts - Simple, focused machine using DRY utilities
+const chatMachine = setup({
+  types: {
+    input: {} as {
+      userId: string;
+      config: ChatConfig;
+      sessionData: SessionData;
+      actors: {
+        sendMessage: ActorLogic<any, any>;
+        loadMessages: ActorLogic<any, any>;
+      };
+    },
+    context: {} as {
+      userId: string;
+      config: ChatConfig;
+      sessionData: SessionData;
+      messages: Message[];
+      currentMessage: string;
+      status: 'idle' | 'loading' | 'success' | 'error';
+      error: string | null;
+      actors: any;
+    }
+  },
+  actions: {
+    ...commonActions, // Reuse common actions
+    updateMessage: assign({
+      currentMessage: ({ event }: any) => event.value
+    }),
+    addMessage: assign({
+      messages: ({ context, event }: any) => [
+        ...context.messages,
+        event.output
+      ],
+      currentMessage: '' // Clear input after sending
+    })
+  },
+  guards: {
+    ...commonGuards, // Reuse common guards
+    canSend: ({ context }: any) => 
+      context.currentMessage.trim().length > 0 && context.status !== 'loading'
+  }
+}).createMachine({
+  id: 'chat',
+  initial: 'idle',
+  context: ({ input }) => ({
+    userId: input.userId,
+    config: input.config,
+    sessionData: input.sessionData,
+    actors: input.actors,
+    messages: [],
+    currentMessage: '',
+    status: 'idle',
+    error: null
+  }),
+  states: {
+    idle: {
+      on: {
+        TYPE: { actions: 'updateMessage' },
+        SEND: { 
+          guard: 'canSend',
+          target: 'sending'
+        },
+        LOAD: 'loading'
+      }
+    },
+    loading: {
+      entry: 'setLoading',
+      invoke: {
+        src: ({ context }) => context.actors.loadMessages,
+        input: ({ context }) => ({
+          serverUrl: context.config.serverUrl,
+          bearerToken: context.sessionData.token
+        }),
+        onDone: {
+          target: 'idle',
+          actions: [
+            'setSuccess',
+            assign({
+              messages: ({ event }) => event.output
+            })
+          ]
+        },
+        onError: {
+          target: 'idle',
+          actions: 'setError'
+        }
+      }
+    },
+    sending: {
+      entry: 'setLoading',
+      invoke: {
+        src: ({ context }) => context.actors.sendMessage,
+        input: ({ context }) => ({
+          serverUrl: context.config.serverUrl,
+          bearerToken: context.sessionData.token,
+          data: {
+            message: context.currentMessage,
+            userId: context.userId
+          }
+        }),
+        onDone: {
+          target: 'idle',
+          actions: ['setSuccess', 'addMessage']
+        },
+        onError: {
+          target: 'idle',
+          actions: 'setError'
+        }
+      }
+    }
+  }
+});
+
+// ✅ DRY actor factory
+export const createChatActors = (endpoints: { send: string; load: string }) => ({
+  sendMessage: createApiActor(endpoints.send),
+  loadMessages: createApiActor(endpoints.load)
+});
+```
+
+### Machine Composition Patterns
+```typescript
+// ✅ Parent-Child Machine Communication with actors as input
+const parentMachine = setup({
+  types: {
+    input: {} as {
+      chatConfig: ChatConfig;
+      formConfig: FormConfig;
+      actors: {
+        chatActors: ChatActors;
+        formActors: FormActors;
+      };
+    }
+  }
+}).createMachine({
+  id: 'parent',
+  type: 'parallel',
+  states: {
+    chat: {
+      invoke: {
+        id: 'chatActor',
+        src: ({ context }) => context.actors.chatMachine,
+        input: ({ context }) => ({
+          config: context.chatConfig,
+          initialMessages: [],
+          actors: context.actors.chatActors
+        })
+      }
+    },
+    form: {
+      invoke: {
+        id: 'formActor', 
+        src: ({ context }) => context.actors.formMachine,
+        input: ({ context }) => ({
+          config: context.formConfig,
+          actors: context.actors.formActors
+        })
+      }
+    }
+  }
+});
+```
+
+### Forbidden Patterns
+```typescript
+// ❌ NEVER: useEffect for any purpose
+const Component = () => {
+  useEffect(() => {
+    // FORBIDDEN - no useEffect allowed
+  }, []);
+};
+
+// ❌ NEVER: Business logic in components
+const Component = () => {
+  const handleSubmit = (data) => {
+    // FORBIDDEN - logic should be in XState
+    if (data.isValid) {
+      processData(data);
+    }
+  };
+};
+
+// ❌ NEVER: Direct API calls from components
+const Component = () => {
+  const fetchData = async () => {
+    // FORBIDDEN - API calls should be in XState actors
+    const response = await fetch('/api/data');
+  };
+};
+```
+
+---
+
+## 🎨 Subagent 3: React Component Specialist
+**Role**: Senior Frontend Developer
+**Responsibilities**: Minimal, pure React components
+
+### Component Design Philosophy
+- **Minimalist Components**: As small and simple as possible (KISS principle)
+- **Pure Rendering**: Components only render UI based on XState state
+- **Single Responsibility**: Each component has exactly one purpose
+- **DRY Components**: Create reusable UI components and hooks
+- **Props for Data**: Receive all data as props from XState context
+- **Callbacks for Events**: Communicate through callbacks that send XState events
+- **No Internal Logic**: Zero business logic in components
+
+### Component Patterns
+```typescript
+// ✅ DRY: Reusable UI components
+// components/ui/Button.tsx
+interface ButtonProps {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: 'primary' | 'secondary';
+  loading?: boolean;
+}
+
+export const Button = ({ 
+  children, 
+  onClick, 
+  disabled = false, 
+  variant = 'primary',
+  loading = false 
+}: ButtonProps) => (
+  <button
+    onClick={onClick}
+    disabled={disabled || loading}
+    className={`btn btn-${variant} ${loading ? 'loading' : ''}`}
+  >
+    {loading ? 'Loading...' : children}
+  </button>
+);
+
+// components/ui/Input.tsx  
+interface InputProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export const Input = ({ value, onChange, placeholder, disabled }: InputProps) => (
+  <input
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder}
+    disabled={disabled}
+    className="input"
+  />
+);
+
+// ✅ KISS: Simple, focused chat component
+'use client';
+
+interface ChatInputProps {
+  initialData: {
+    userId: string;
+    config: ChatConfig;
+    sessionData: SessionData;
+  };
+  serverUrl: string;
+}
+
+export function ChatInput({ initialData, serverUrl }: ChatInputProps) {
+  // Simple actor creation (DRY)
+  const actors = useMemo(() => 
+    createChatActors({
+      send: '/api/chat/send',
+      load: '/api/chat/messages'
+    }), 
+    []
+  );
+  
+  const [state, send] = useMachine(chatMachine, {
+    input: {
+      ...initialData,
+      actors
+    }
+  });
+  
+  // Single responsibility: render chat input UI
+  return (
+    <div className="chat-input">
+      <Input
+        value={state.context.currentMessage}
+        onChange={(value) => send({ type: 'TYPE', value })}
+        disabled={state.context.status === 'loading'}
+        placeholder="Type a message..."
+      />
+      <Button
+        onClick={() => send({ type: 'SEND' })}
+        disabled={!state.context.canSend}
+        loading={state.context.status === 'loading'}
+        variant="primary"
+      >
+        Send
+      </Button>
+      {state.context.error && (
+        <ErrorMessage message={state.context.error} />
+      )}
+    </div>
+  );
+}
+
+// ✅ DRY: Reusable error component
+const ErrorMessage = ({ message }: { message: string }) => (
+  <div className="error-message">
+    {message}
+  </div>
+);
+
+// ✅ KISS: Simple server component
+export default async function ChatPage({ params }: { params: { id: string } }) {
+  // Single responsibility: fetch data and render
+  const sessionData = await getSession();
+  const config = await getChatConfig(params.id);
+  
+  return (
+    <ChatInput
+      initialData={{
+        userId: params.id,
+        config,
+        sessionData
+      }}
+      serverUrl={process.env.NEXT_PUBLIC_API_URL!}
+    />
+  );
+}
+```
+
+### Component Rules
+1. **Single Responsibility**: Each component has one clear purpose
+2. **Stateless**: No internal React state - all state in XState
+3. **Event Delegation**: Only send events to XState, never handle logic
+4. **Prop Drilling Prevention**: Use XState context for deep data access
+5. **Server-First**: Prefer Server Components when possible
+
+---
+
+## 🖥️ Subagent 4: Server-Side Architect
+**Role**: Senior Backend Developer
+**Responsibilities**: Server-side logic and caching strategy
+
+### Server-First Principles
+- **Maximize Server-Side Functionality**: Keep logic on server when possible
+- **Next.js Cache First**: Use Next.js built-in caching with fetch before Redis
+- **Redis Only When Necessary**: Implement Redis only for complex caching needs
+- **Server Component Priority**: Use Server Components over Client Components
+- **API Route Optimization**: Efficient API design for XState actors
+
+### Next.js Caching Strategy (Primary)
+```typescript
+// ✅ DRY: Reusable caching utility
+// lib/cache.ts
+export const createCachedFetch = (defaultRevalidate: number = 300) => 
+  async (url: string, options: RequestInit & { revalidate?: number } = {}) => {
+    const { revalidate = defaultRevalidate, ...fetchOptions } = options;
+    
+    return fetch(url, {
+      ...fetchOptions,
+      next: { 
+        revalidate,
+        tags: [url.split('/').pop()!] // Auto-generate cache tags
+      }
+    });
+  };
+
+// ✅ KISS: Simple session management
+// lib/session.ts
+const cachedFetch = createCachedFetch(1800); // 30 min default
+
+export async function getSessionData() {
+  const response = await cachedFetch('/api/auth/session', {
+    revalidate: 1800 // 30 minutes for session
+  });
+  return response.json();
+}
+
+// ✅ DRY: Layout with minimal caching
+export default async function RootLayout({ children, params }) {
+  // Single session call
+  const sessionData = await getSessionData();
+  
+  // Only essential data with Next.js caching
+  const initialData = {
+    sessionData,
+    config: await cachedFetch(`/api/config/${params.userId}`, {
+      revalidate: 3600 // 1 hour for config
+    }).then(res => res.json())
+  };
+  
+  return (
+    <html>
+      <body>
+        <XStateProvider initialData={initialData}>
+          {children}
+        </XStateProvider>
+      </body>
+    </html>
+  );
+}
+
+// ✅ YAGNI: Simple API route without Redis
+// app/api/data/[userId]/route.ts
+export async function GET(request: Request, { params }) {
+  try {
+    // Next.js handles caching automatically
+    const data = await fetchUserData(params.userId);
+    
+    return NextResponse.json(data, {
+      headers: {
+        // Let Next.js handle caching
+        'Cache-Control': 'public, max-age=300, stale-while-revalidate=60'
+      }
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to fetch data' },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ Only use Redis for actual real-time features
+// lib/realtime.ts (only when needed)
+export async function updateLiveChat(sessionId: string, message: any) {
+  // Redis ONLY for real-time chat that needs instant updates across users
+  if (process.env.ENABLE_REALTIME === 'true') {
+    const redis = await import('@/lib/upstash').then(m => m.redis);
+    await redis.publish(`chat:${sessionId}`, JSON.stringify(message));
+  }
+}
+```
+
+### Redis Implementation (Only for Real-Time Features)
+```typescript
+// ✅ YAGNI: Only implement Redis when actually needed
+// lib/realtime-cache.ts
+
+// Use Redis ONLY for these specific cases:
+// 1. Real-time chat between multiple users
+// 2. Live notifications that need instant delivery
+// 3. User presence/online status
+// 4. Rate limiting for security
+
+export class RealtimeCache {
+  private redis: any;
+  
+  constructor() {
+    // Lazy load Redis only when needed
+    if (process.env.ENABLE_REALTIME === 'true') {
+      this.redis = require('@/lib/upstash').redis;
+    }
+  }
+  
+  // Only for real-time chat sessions
+  async updateChatSession(sessionId: string, data: any) {
+    if (!this.redis) return; // Graceful degradation
+    
+    await this.redis.setex(
+      `session:${sessionId}`, 
+      1800, // 30 min TTL
+      JSON.stringify(data)
+    );
+  }
+  
+  // Only for user presence
+  async setUserOnline(userId: string) {
+    if (!this.redis) return;
+    
+    await this.redis.setex(
+      `online:${userId}`, 
+      300, // 5 min TTL
+      Date.now()
+    );
+  }
+  
+  // Only for rate limiting
+  async checkRateLimit(key: string, limit: number, window: number) {
+    if (!this.redis) return false;
+    
+    const current = await this.redis.incr(key);
+    if (current === 1) {
+      await this.redis.expire(key, window);
+    }
+    return current > limit;
+  }
+}
+
+// ✅ KISS: Simple usage only when needed
+export const realtimeCache = new RealtimeCache();
+
+// DON'T use Redis for:
+// - User profiles (use Next.js cache)
+// - Chat history (use Next.js cache)  
+// - Configuration data (use Next.js cache)
+// - Static content (use Next.js cache)
+```
+
+### API Design for XState
+```typescript
+// ✅ API routes with Next.js caching
+// app/api/chat/route.ts
+import { unstable_cache } from 'next/cache';
+
+export async function POST(request: Request) {
+  const { message, userId } = await request.json();
+  
+  try {
+    // Use Next.js caching for frequently accessed data
+    const getCachedUserConfig = unstable_cache(
+      async (id: string) => await getUserConfig(id),
+      ['user-config'],
+      { revalidate: 3600 }
+    );
+    
+    const userConfig = await getCachedUserConfig(userId);
+    const response = await processMessage(message, userId, userConfig);
+    
+    return NextResponse.json(response);
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to process message' },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ GET route with automatic fetch caching
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get('userId');
+  
+  // Next.js automatically caches this fetch
+  const messages = await fetch(`${process.env.DATABASE_URL}/messages/${userId}`, {
+    next: { revalidate: 60 } // Cache for 1 minute
+  });
+  
+  return NextResponse.json(await messages.json());
+}
+```
+
+### When to Use Redis
+```typescript
+// ✅ Redis for real-time features only
+// lib/realtime-cache.ts
+export async function updateChatSession(sessionId: string, data: any) {
+  // Redis for real-time chat sessions
+  await redis.setex(`session:${sessionId}`, 1800, JSON.stringify(data)); // 30 min TTL
+}
+
+export async function getChatSession(sessionId: string) {
+  const session = await redis.get(`session:${sessionId}`);
+  return session ? JSON.parse(session as string) : null;
+}
+
+// Use Redis ONLY for:
+// - Real-time chat sessions
+// - Cross-user notifications
+// - Rate limiting counters
+// - Temporary user state during chat
+```
+
+---
+
+## 🚀 Subagent 5: Integration & Deployment Specialist
+**Role**: Senior DevOps Engineer
+**Responsibilities**: Integration patterns and deployment optimization
+
+### Integration Rules
+- **Stately Inspector**: Use for visualizing and debugging machines
+- **TypeScript Strict Mode**: Ensure type safety across all machines
+- **Performance Monitoring**: Monitor machine performance and memory usage
+- **Bundle Optimization**: Minimize client-side JavaScript
+
+### File Structure Standards
+```
+src/
+├── machines/
+│   ├── chat.ts               # Complete chat machine
+│   ├── form.ts               # Complete form machine
+│   ├── auth.ts               # Complete auth machine
+│   └── index.ts              # All machine exports
+├── components/
+│   ├── server/               # Server Components
+│   └── client/               # Client Components
+├── app/
+│   ├── api/
+│   ├── (dashboard)/
+│   ├── layout.tsx
+│   └── middleware.ts
+├── lib/
+│   ├── cache.ts              # Next.js + Redis caching utils
+│   ├── xstate-utils.ts
+│   └── types.ts
+└── __tests__/                # Optional tests
+```
+
+### Machine File Structure (Simplified)
+```typescript
+// ✅ Single file per machine - machines/chat.ts
+import { setup, assign, fromPromise } from 'xstate';
+
+// Types
+type ChatInput = {
+  initialMessages: Message[];
+  userId: string;
+  config: ChatConfig;
+  sessionData: SessionData;
+  bearerToken: string;
+  actors: {
+    sendMessage: ActorLogic<any, any>;
+    loadMessages: ActorLogic<any, any>;
+  };
+};
+
+type ChatContext = {
+  messages: Message[];
+  userId: string;
+  config: ChatConfig;
+  sessionData: SessionData;
+  bearerToken: string;
+  currentMessage: string;
+  isTyping: boolean;
+  error: string | null;
+  actors: {
+    sendMessage: ActorLogic<any, any>;
+    loadMessages: ActorLogic<any, any>;
+  };
+  // In-memory cache for API responses
+  apiCache: Map<string, { data: any; timestamp: number }>;
+};
+
+type ChatEvents = 
+  | { type: 'MESSAGE_CHANGE'; value: string }
+  | { type: 'SEND_MESSAGE' }
+  | { type: 'LOAD_MESSAGES' }
+  | { type: 'RECEIVE_MESSAGE'; message: Message };
+
+// Actions
+const assignMessage = assign({
+  currentMessage: ({ event }: { event: any }) => event.value
+});
+
+const assignError = assign({
+  error: ({ event }: { event: any }) => event.error,
+  isTyping: false
+});
+
+const clearMessage = assign({
+  currentMessage: '',
+  isTyping: false
+});
+
+const assignMessages = assign({
+  messages: ({ event }: { event: any }) => event.output,
+  apiCache: ({ context, event }) => {
+    const newCache = new Map(context.apiCache);
+    const cacheKey = `messages-${context.userId}`;
+    newCache.set(cacheKey, { 
+      data: event.output, 
+      timestamp: Date.now() 
+    });
+    return newCache;
+  }
+});
+
+// Guards
+const hasMessage = ({ context }: { context: ChatContext }) => 
+  context.currentMessage.trim().length > 0;
+
+const isCacheValid = ({ context }: { context: ChatContext }, cacheKey: string, maxAge: number = 5 * 60 * 1000) => {
+  const cached = context.apiCache.get(cacheKey);
+  if (!cached) return false;
+  return (Date.now() - cached.timestamp) < maxAge;
+};
+
+// Machine (NO actors in setup - they come from input)
+export const chatMachine = setup({
+  types: {
+    input: {} as ChatInput,
+    context: {} as ChatContext,
+    events: {} as ChatEvents
+  },
+  actions: {
+    assignMessage,
+    assignError,
+    clearMessage,
+    assignMessages
+  },
+  guards: {
+    hasMessage,
+    messagesInCache: ({ context }) => {
+      const cacheKey = `messages-${context.userId}`;
+      return isCacheValid({ context } as any, cacheKey);
+    }
+  }
+}).createMachine({
+  id: 'chat',
+  initial: 'idle',
+  context: ({ input }) => ({
+    messages: input.initialMessages,
+    userId: input.userId,
+    config: input.config,
+    sessionData: input.sessionData,
+    bearerToken: input.bearerToken,
+    actors: input.actors,
+    currentMessage: '',
+    isTyping: false,
+    error: null,
+    apiCache: new Map()
+  }),
+  states: {
+    idle: {
+      on: {
+        MESSAGE_CHANGE: {
+          actions: 'assignMessage'
+        },
+        SEND_MESSAGE: {
+          guard: 'hasMessage',
+          target: 'sending'
+        },
+        LOAD_MESSAGES: [
+          {
+            // Use cached data if valid
+            guard: 'messagesInCache',
+            actions: assign({
+              messages: ({ context }) => {
+                const cacheKey = `messages-${context.userId}`;
+                return context.apiCache.get(cacheKey)?.data || context.messages;
+              }
+            })
+          },
+          {
+            target: 'loading'
+          }
+        ]
+      }
+    },
+    loading: {
+      invoke: {
+        src: ({ context }) => context.actors.loadMessages,
+        input: ({ context }) => ({
+          userId: context.userId
+        }),
+        onDone: {
+          target: 'idle',
+          actions: 'assignMessages'
+        },
+        onError: {
+          target: 'idle',
+          actions: 'assignError'
+        }
+      }
+    },
+    sending: {
+      entry: assign({ isTyping: true }),
+      invoke: {
+        src: ({ context }) => context.actors.sendMessage,
+        input: ({ context }) => ({
+          message: context.currentMessage,
+          userId: context.userId
+        }),
+        onDone: {
+          target: 'idle',
+          actions: [
+            assign({
+              messages: ({ context, event }) => [
+                ...context.messages,
+                event.output
+              ]
+            }),
+            'clearMessage',
+            // Invalidate messages cache after sending
+            assign({
+              apiCache: ({ context }) => {
+                const newCache = new Map(context.apiCache);
+                const cacheKey = `messages-${context.userId}`;
+                newCache.delete(cacheKey);
+                return newCache;
+              }
+            })
+          ]
+        },
+        onError: {
+          target: 'idle',
+          actions: 'assignError'
+        }
+      }
+    }
+  }
+});
+
+// ✅ Actor factory with request deduplication and caching
+const activeRequests = new Map<string, Promise<any>>();
+
+export const createChatActors = (serverUrl: string, bearerToken: string) => ({
+  sendMessage: fromPromise(async ({ input }: { input: { message: string; userId: string } }) => {
+    // Don't cache POST requests, but prevent duplicates
+    const requestKey = `send-${input.userId}-${input.message}-${Date.now()}`;
+    
+    if (activeRequests.has(requestKey)) {
+      return activeRequests.get(requestKey);
+    }
+    
+    const requestPromise = fetch(`${serverUrl}/api/chat`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${bearerToken}`
+      },
+      body: JSON.stringify(input),
+      next: { revalidate: 0 }
+    }).then(async res => {
+      activeRequests.delete(requestKey);
+      if (!res.ok) throw new Error('Failed to send message');
+      return res.json();
+    }).catch(error => {
+      activeRequests.delete(requestKey);
+      throw error;
+    });
+    
+    activeRequests.set(requestKey, requestPromise);
+    return requestPromise;
+  }),
+  
+  loadMessages: fromPromise(async ({ input }: { input: { userId: string } }) => {
+    const requestKey = `messages-${input.userId}`;
+    
+    // Reuse in-flight requests
+    if (activeRequests.has(requestKey)) {
+      return activeRequests.get(requestKey);
+    }
+    
+    const requestPromise = fetch(`${serverUrl}/api/messages/${input.userId}`, {
+      headers: { 
+        'Authorization': `Bearer ${bearerToken}`
+      },
+      next: { 
+        revalidate: 300,
+        tags: [`messages-${input.userId}`]
+      }
+    }).then(async res => {
+      // Keep GET requests cached for 5 minutes
+      setTimeout(() => activeRequests.delete(requestKey), 5 * 60 * 1000);
+      if (!res.ok) throw new Error('Failed to load messages');
+      return res.json();
+    }).catch(error => {
+      activeRequests.delete(requestKey);
+      throw error;
+    });
+    
+    activeRequests.set(requestKey, requestPromise);
+    return requestPromise;
+  })
+});
+```
+
+---
+
+# 🔧 CONSOLIDATED DEVELOPMENT RULES
+
+## Core Development Principles
+
+### 1. XState-First Architecture
+- **Single Source of Truth**: ALL application state, business logic, and API calls managed exclusively by XState
+- **Zero useEffect**: Absolutely NO `useEffect` usage anywhere in codebase
+- **Direct Input Initialization**: Initial state provided via `input` property only
+- **Actor-Based Side Effects**: All async operations, timers, event listeners through XState actors
+- **Immutable State**: Treat all state as immutable, use `assign()` for updates
+
+### 2. Server-First Development
+- **Maximize Server-Side**: Keep functionality on server when possible
+- **Minimal Client-Side**: Client code only when absolutely necessary
+- **Server Component Priority**: Prefer Server Components over Client Components
+- **Redis-Powered Caching**: Middleware caching with layout-level retrieval
+
+### 3. Component Minimalism
+- **Pure Rendering**: Components only render UI based on XState state
+- **No Internal Logic**: Zero business logic in React components
+- **Props for Data**: All data received as props from XState context
+- **Callbacks for Events**: Communication through XState event callbacks only
+
+### 4. Modular State Management
+- **Granular Machines**: Separate XState machines for distinct features
+- **Hierarchical Composition**: Parent-child machine relationships
+- **Component-Level Machines**: Individual machines for complex UI components
+- **Actor Communication**: Inter-machine communication through actors
+
+## Feature Development Lifecycle
+
+### Phase 1: Analysis (Architecture Analyst)
+1. **Codebase Analysis**: Thoroughly analyze existing implementation
+2. **Integration Mapping**: Identify potential impacts and integration points
+3. **Machine Architecture**: Design XState machine hierarchy
+4. **Data Flow Planning**: Map server-to-client-to-XState data flow
+
+### Phase 2: Machine Design (XState Machine Engineer)
+1. **State Identification**: Define all possible states and transitions
+2. **Event Mapping**: Identify all events and their triggers
+3. **Actor Planning**: Design actors for all side effects and API calls
+4. **Input Schema**: Define input types and initialization patterns
+
+### Phase 3: Component Implementation (React Component Specialist)
+1. **Server Components**: Implement data-fetching server components
+2. **Client Components**: Create minimal client components with XState
+3. **Event Integration**: Connect UI events to XState machine events
+4. **Error Handling**: Implement error states and user feedback
+
+### Phase 4: Server Integration (Server-Side Architect)
+1. **Next.js Caching**: Implement fetch-based caching with revalidation
+2. **Redis Integration**: Add Redis only for real-time features
+3. **Performance Optimization**: Optimize server-side data processing
+4. **Security Implementation**: Add authentication and authorization
+
+### Phase 5: Deployment (Integration & Deployment Specialist)
+1. **Bundle Optimization**: Minimize client-side JavaScript
+2. **Performance Monitoring**: Set up monitoring for machine performance
+3. **Type Safety**: Ensure strict TypeScript compliance
+4. **Documentation**: Update machine and component documentation
+
+## Emergency Decision Framework
+
+When facing development decisions, consult in order:
+
+1. **Is this logic in XState?** (Must be YES)
+2. **Am I using useEffect?** (Must be NO)
+3. **Can this run on server?** (Prefer YES)
+4. **Is initial data via input?** (Must be YES)
+5. **Is machine too large?** (Should be NO)
+6. **Are side effects in actors?** (Must be YES)
+7. **Is client JS minimized?** (Should be YES)
+8. **Is Redis caching optimal?** (Should be YES)
+
+## Communication Protocol
+
+### Between Subagents
+- **Architecture Analyst** → **XState Machine Engineer**: System design and machine specifications
+- **XState Machine Engineer** → **React Component Specialist**: Machine contracts and event interfaces  
+- **React Component Specialist** → **Server-Side Architect**: Data requirements and API needs
+- **Server-Side Architect** → **Integration & Deployment Specialist**: API specifications and Next.js caching behavior
+- **Integration & Deployment Specialist** → **Architecture Analyst**: Deployment feedback and optimization opportunities
+
+### Development Flow
+1. **Analysis** → Architectural decisions and system design
+2. **Planning** → XState machine specifications and component breakdown
+3. **Implementation** → Machine-first development approach
+4. **Integration** → Server-side integration and caching optimization
+5. **Deployment** → Production deployment and monitoring
+
+---
+
+**Remember**: XState manages ALL logic, Server handles ALL processing, Client does MINIMAL work, NO useEffect ANYWHERE, Direct input initialization ALWAYS

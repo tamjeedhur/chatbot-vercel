@@ -1,0 +1,12 @@
+@media screen and (max-width: 1650px) {
+    .rdp-months {
+    display: inline-block;
+    }
+    .rdp-month {
+    margin: 0;
+    }
+    .rdp,.root_qxxl {
+    --rdp-cell-size: 45px;
+    --rdp-caption-font-size: 16px;
+    }
+    }
