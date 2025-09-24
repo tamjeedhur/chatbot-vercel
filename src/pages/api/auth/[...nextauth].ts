@@ -11,7 +11,8 @@ if (!process.env.NEXTAUTH_SECRET) {
 
 // Set NEXTAUTH_URL if not provided
 if (!process.env.NEXTAUTH_URL) {
-  process.env.NEXTAUTH_URL = process.env.NODE_ENV === 'production' ? 'https://chatbot-vercel-app.vercel.app' : 'http://localhost:3000';
+  process.env.NEXTAUTH_URL =
+    process.env.NODE_ENV === 'production' ? 'https://chatbot-vercel-app.vercel.app' : 'https://chatbot-vercel-app.vercel.app';
 }
 
 // NextAuth configuration with type annotations
