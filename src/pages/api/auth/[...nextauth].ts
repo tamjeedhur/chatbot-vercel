@@ -123,8 +123,8 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error',
+    signIn: '/sign-in',
+    error: '/sign-in',
   },
   session: {
     strategy: 'jwt',
