@@ -813,7 +813,60 @@ export async function listAllQuestions(chatbotId: string): Promise<any[]> {
     return data.data.documents;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error fetching conversations:', {
+    console.error('Error fetching q/a documents:', {
+      error: errorMessage,
+      cause: error instanceof Error ? error.cause : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return [];
+  }
+}
+
+export async function listAllTextContent(chatbotId: string): Promise<any[]> {
+  try {
+    if (!Server_URL) {
+      console.error('Server_URL is not configured');
+      return [];
+    }
+
+    const session = await getServerSession(authOptions);
+    const accessToken: string = (session as any)?.accessToken || '';
+
+    if (!accessToken) {
+      console.warn('No access token available for data sources fetch');
+      return [];
+    }
+
+    // Use the existing conversations endpoint and filter by chatbotId
+    const apiUrl = `${Server_URL}/api/${API_VERSION}/datasources/chatbots/${chatbotId}/text`;
+
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+        Expires: '0',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      console.error('Text content API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        url: response.url,
+      });
+      return [];
+    }
+
+    const data = await response.json();
+
+    return data.data.documents;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching text content:', {
       error: errorMessage,
       cause: error instanceof Error ? error.cause : undefined,
       stack: error instanceof Error ? error.stack : undefined,

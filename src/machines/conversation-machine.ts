@@ -90,6 +90,8 @@ export interface ConversationMachineContext {
   // Message sync state
   messagesToSync: Message[];
   lastSyncTimestamp: number;
+  // Streaming state
+  isStreaming: boolean;
 }
 
 // Machine events
@@ -112,6 +114,7 @@ export type ConversationMachineEvent =
   | { type: 'SOCKET_CONVERSATION_UPDATE'; data: any }
   | { type: 'SOCKET_STREAM_CHUNK'; data: any }
   | { type: 'SOCKET_STREAM_COMPLETE'; data: any }
+  | { type: 'SOCKET_NEW_CONVERSATION'; data: any }
   | { type: 'JOIN_CONVERSATION'; conversationId: string }
   | { type: 'SYNC_MESSAGES'; messages: Message[] }
   | { type: 'UPDATE_SOCKET_CONFIG'; socket: Socket | null; isConnected: boolean };
@@ -178,11 +181,16 @@ const createSocketEventHandlers = fromCallback(
       sendBack({ type: 'SOCKET_STREAM_COMPLETE', data });
     };
 
+    const handleNewConversation = (data: any) => {
+      sendBack({ type: 'SOCKET_NEW_CONVERSATION', data });
+    };
+
     socket.on('conversation-list', handleConversationList);
     socket.on('conversation-update', handleConversationUpdate);
     socket.on('message', handleMessage);
     socket.on('rag-stream-chunk', handleStreamChunk);
     socket.on('rag-stream-complete', handleStreamComplete);
+    socket.on('new_conversation', handleNewConversation);
 
     // Cleanup function
     return () => {
@@ -191,6 +199,7 @@ const createSocketEventHandlers = fromCallback(
       socket.off('message', handleMessage);
       socket.off('rag-stream-chunk', handleStreamChunk);
       socket.off('rag-stream-complete', handleStreamComplete);
+      socket.off('new_conversation', handleNewConversation);
     };
   }
 );
@@ -363,7 +372,11 @@ export const conversationMachine = setup({
     }),
     appendStreamChunk: assign({
       selectedConversation: ({ context, event }) => {
-        const { conversationId, chunk } = event as any;
+        // ✅ Extract data from the correct structure
+        const eventData = (event as any).data || event;
+        const { conversationId, chunk } = eventData;
+       
+        
         if (
           context.selectedConversation &&
           context.selectedConversation.conversationId === conversationId
@@ -383,14 +396,37 @@ export const conversationMachine = setup({
               ...context.selectedConversation,
               messages: updatedMessages,
             };
+          } else {
+            // ✅ Create new streaming message if none exists (like embed widget)
+            const streamingMessage = {
+              _id: `streaming-${Date.now()}-${Math.random()}`,
+              messageId: `streaming-${Date.now()}-${Math.random()}`,
+              conversationId: conversationId,
+              type: 'bot' as const,
+              sender: 'ai' as const,
+              text: chunk, // Start with the first chunk
+              content: chunk, // Start with the first chunk
+              time: new Date().toLocaleTimeString(),
+              timestamp: new Date().toISOString(),
+              isStreaming: true, // ✅ Mark as streaming
+            };
+            
+            return {
+              ...context.selectedConversation,
+              messages: [...currentMessages, streamingMessage],
+            };
           }
         }
         return context.selectedConversation;
       },
+      isStreaming: true, // ✅ Re-enable streaming state to prevent duplicates
     }),
     completeStream: assign({
       selectedConversation: ({ context, event }) => {
-        const { conversationId } = event as any;
+        // ✅ Extract data from the correct structure
+        const eventData = (event as any).data || event;
+        const { conversationId } = eventData;
+   
         if (
           context.selectedConversation &&
           context.selectedConversation.conversationId === conversationId
@@ -413,7 +449,9 @@ export const conversationMachine = setup({
         }
         return context.selectedConversation;
       },
+      isStreaming: false, // ✅ Clear streaming state when complete
     }),
+
 
     // Socket and real-time actions
     updateSocketConfig: assign({
@@ -441,21 +479,21 @@ export const conversationMachine = setup({
      
       
 
-        console.log('🔌 XState: Checking conditions for message processing...');
+       
         const hasMessage = !!message;
         const hasConversationId = !!msgConversationId;
         const hasSelectedConversation = !!context.selectedConversation;
         const conversationIdMatch = context.selectedConversation?.conversationId === msgConversationId;
 
-        console.log('🔌 XState: Condition check results:', {
-          hasMessage,
-          hasConversationId,
-          hasSelectedConversation,
-          conversationIdMatch,
-          allConditionsMet: hasMessage && hasConversationId && hasSelectedConversation && conversationIdMatch,
-        });
+     
 
         if (hasMessage && hasConversationId && hasSelectedConversation && conversationIdMatch && context.selectedConversation) {
+          // ✅ Block assistant messages during streaming to prevent duplicates
+          if (message.sender === 'ai' && context.isStreaming) {
+          
+            return context.selectedConversation;
+          }
+
           const currentMessages = context.selectedConversation.messages || [];
 
           const newMessage: Message = {
@@ -479,66 +517,34 @@ export const conversationMachine = setup({
             (msg) => (msg._id && msg._id === newMessage._id) || (msg.messageId && msg.messageId === newMessage.messageId)
           );
 
-          console.log('🔌 Message exists check:', { exists, currentMessagesCount: currentMessages.length });
+        
 
           if (!exists) {
             const updatedConversation = {
               ...context.selectedConversation,
               messages: [...currentMessages, newMessage],
             };
-            console.log('✅ XState: Message added to selected conversation:', {
-              oldMessagesCount: currentMessages.length,
-              newMessagesCount: updatedConversation.messages.length,
-              newMessageId: newMessage.messageId,
-              newMessageContent: newMessage.content,
-            });
+        
             return updatedConversation;
           } else {
             console.log('⚠️ XState: Message already exists, not adding');
-            console.log('🚨 ===== XSTATE MESSAGE PROCESSING COMPLETE (DUPLICATE) =====');
+            
           }
         } else {
-          console.log('❌ XState: Message not added to selectedConversation because:', {
-            hasMessage,
-            hasConversationId,
-            hasSelectedConversation,
-            conversationIdMatch,
-            reason: !hasMessage ? 'No message' : 
-                   !hasConversationId ? 'No conversation ID' :
-                   !hasSelectedConversation ? 'No selected conversation' :
-                   !conversationIdMatch ? 'Conversation ID mismatch' : 'Unknown',
-          });
+        
           console.log('🚨 ===== XSTATE MESSAGE PROCESSING COMPLETE (SKIPPED) =====');
         }
         return context.selectedConversation;
       },
       conversations: ({ context, event }) => {
-        console.log('🚨 ===== CONVERSATIONS LIST UPDATE =====');
+      
         const { data } = event as any;
         const { message, conversationId: msgConversationId } = data;
-
-        console.log('🔌 Conversations: Raw event data:', JSON.stringify(event, null, 2));
-        console.log('🔌 Conversations: Extracted data:', {
-          message: message,
-          msgConversationId: msgConversationId,
-        });
-        console.log('🔌 Conversations: Current conversations list:', {
-          totalConversations: context.conversations.length,
-          conversationIds: context.conversations.map(c => c.conversationId),
-          conversationsWithMessages: context.conversations.map(c => ({
-            id: c.conversationId,
-            messageCount: c.messages?.length || 0,
-          })),
-        });
 
         // Also update the conversation in the conversations list
         if (message && msgConversationId) {
           const updatedConversations = context.conversations.map(conv => {
-            console.log('🔌 Checking conversation:', {
-              convId: conv.conversationId,
-              msgConvId: msgConversationId,
-              matches: conv.conversationId === msgConversationId,
-            });
+           
             
             if (conv.conversationId === msgConversationId) {
               const currentMessages = conv.messages || [];
@@ -556,20 +562,6 @@ export const conversationMachine = setup({
                 status: message.status || { sent: true, delivered: true, read: false },
               };
 
-              console.log('🔌 Conversations list - Message ID mapping:', {
-                originalMessageId: message.messageId,
-                originalId: message._id,
-                finalId: newMessage._id,
-                finalMessageId: newMessage.messageId,
-              });
-
-              console.log('🔌 Found matching conversation, adding message:', {
-                conversationId: conv.conversationId,
-                currentMessagesCount: currentMessages.length,
-                newMessageId: newMessage.messageId,
-                newMessageContent: newMessage.content,
-              });
-
               // Check if message already exists to prevent duplicates
               const exists = currentMessages.some(
                 (msg) => (msg._id && msg._id === newMessage._id) || (msg.messageId && msg.messageId === newMessage.messageId)
@@ -580,21 +572,16 @@ export const conversationMachine = setup({
                   ...conv,
                   messages: [...currentMessages, newMessage],
                 };
-                console.log('🔌 Updated conversation with new message:', {
-                  oldMessagesCount: currentMessages.length,
-                  newMessagesCount: updatedConv.messages.length,
-                });
+              
                 return updatedConv;
               } else {
-                console.log('🔌 Message already exists in conversation list, skipping');
+               
               }
             }
             return conv;
           });
           
-          console.log('🔌 Conversations list update complete:', {
-            totalConversations: updatedConversations.length,
-          });
+        
           
           return updatedConversations;
         }
@@ -648,23 +635,47 @@ export const conversationMachine = setup({
       },
     }),
 
+    handleSocketNewConversation: assign({
+      conversations: ({ context, event }) => {
+        const { data } = event as any;
+        const { conversation } = data;
+
+     
+        // Check if conversation already exists to prevent duplicates
+        const exists = context.conversations.some((conv) => conv.conversationId === conversation.conversationId);
+        if (exists) {
+          
+          return context.conversations;
+        }
+        
+  
+        // Add new conversation to the beginning of the list
+        return [conversation, ...context.conversations];
+      },
+      filteredConversations: ({ context, event }) => {
+        const { data } = event as any;
+        const { conversation } = data;
+
+        // Check if conversation already exists to prevent duplicates
+        const exists = context.filteredConversations.some((conv) => conv.conversationId === conversation.conversationId);
+        if (exists) return context.filteredConversations;
+        
+        // Add new conversation to the beginning of the filtered list
+        return [conversation, ...context.filteredConversations];
+      },
+    }),
+
     emitJoinConversation: ({ context, event }) => {
       const { conversationId } = event as any;
-      console.log('🔌 emitJoinConversation action called:', {
-        conversationId,
-        socketConnected: context.socket?.connected,
-        socketExists: !!context.socket,
-        context: context,
-      });
+     
 
       if (context.socket?.connected) {
-        console.log('🔌 Emitting join-conversation from XState machine:', conversationId);
-        console.log('🔌 Socket object in emitJoinConversation:', context.socket);
-        console.log('🔌 About to emit join-conversation with:', { conversationId });
+       
+       
 
         try {
           context.socket.emit('join-conversation', { conversationId });
-          console.log('✅ Successfully emitted join-conversation event from emitJoinConversation');
+          
         } catch (error) {
           console.error('❌ Error emitting join-conversation from emitJoinConversation:', error);
         }
@@ -686,34 +697,19 @@ export const conversationMachine = setup({
         context.selectedConversation &&
         (context.selectedConversation.conversationId);
 
-      console.log('🔌 checkAndAutoJoin called:', {
-        autoJoinConversations: context.autoJoinConversations,
-        isConnected: context.isConnected,
-        hasSelectedConversation: !!context.selectedConversation,
-        conversationId: context.selectedConversation?.conversationId,
-        socketConnected: context.socket?.connected,
-        shouldJoin,
-      });
+   
 
       if (shouldJoin && context.socket?.connected && context.selectedConversation) {
         const conversationId = context.selectedConversation.conversationId;
-        console.log('🔌 Auto-joining conversation from XState machine:', conversationId);
-        console.log('🔌 Socket object:', context.socket);
-        console.log('🔌 Socket connected status:', context.socket?.connected);
-        console.log('🔌 About to emit join-conversation with:', { conversationId });
+     
 
         try {
           context.socket.emit('join-conversation', { conversationId });
-          console.log('✅ Successfully emitted join-conversation event');
         } catch (error) {
           console.error('❌ Error emitting join-conversation:', error);
         }
       } else {
-        console.log('🔌 Not joining conversation because:', {
-          shouldJoin,
-          socketConnected: context.socket?.connected,
-          hasSelectedConversation: !!context.selectedConversation,
-        });
+      
       }
     },
   },
@@ -726,13 +722,7 @@ export const conversationMachine = setup({
         context.selectedConversation &&
         (context.selectedConversation.conversationId);
 
-      console.log('🔌 Auto-join check:', {
-        autoJoinConversations: context.autoJoinConversations,
-        isConnected: context.isConnected,
-        hasSelectedConversation: !!context.selectedConversation,
-        conversationId: context.selectedConversation?.conversationId,
-        shouldJoin,
-      });
+  
 
       return !!shouldJoin;
     },
@@ -763,16 +753,10 @@ export const conversationMachine = setup({
       // Message sync state
       messagesToSync: [],
       lastSyncTimestamp: 0,
+      // Streaming state
+      isStreaming: false,
     };
 
-    console.log('🔌 XState conversation machine initialized with context:', {
-      hasSocket: !!context.socket,
-      socketConnected: context.socket?.connected,
-      isConnected: context.isConnected,
-      selectedConversation: context.selectedConversation?.conversationId,
-      autoJoinConversations: context.autoJoinConversations,
-      enableRealTime: context.enableRealTime,
-    });
 
     return context;
   },
@@ -836,6 +820,9 @@ export const conversationMachine = setup({
         },
         SOCKET_CONVERSATION_UPDATE: {
           actions: 'handleSocketConversationUpdate',
+        },
+        SOCKET_NEW_CONVERSATION: {
+          actions: 'handleSocketNewConversation',
         },
         SOCKET_STREAM_CHUNK: {
           actions: 'appendStreamChunk',
@@ -943,6 +930,9 @@ export const conversationMachine = setup({
         },
         SOCKET_CONVERSATION_UPDATE: {
           actions: 'handleSocketConversationUpdate',
+        },
+        SOCKET_NEW_CONVERSATION: {
+          actions: 'handleSocketNewConversation',
         },
         SOCKET_STREAM_CHUNK: {
           actions: 'appendStreamChunk',

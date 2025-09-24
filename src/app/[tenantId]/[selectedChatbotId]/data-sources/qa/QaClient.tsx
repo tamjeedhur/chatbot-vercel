@@ -361,7 +361,7 @@ const QAPairsDataSource: React.FC<{ questions: QuestionsAnswersDocument[] }> = (
           )}
 
           {/* Actions */}
-          <div className='flex justify-end space-x-3 mt-6'>
+          {/* <div className='flex justify-end space-x-3 mt-6'>
             <Link
               href={`/${state.context.tenantId}/${state.context.selectedChatbot?._id}/data-sources`}
               className='px-4 py-2 border border-border rounded-lg text-muted-foreground hover:bg-accent transition-colors'>
@@ -370,7 +370,7 @@ const QAPairsDataSource: React.FC<{ questions: QuestionsAnswersDocument[] }> = (
             <button className='px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors'>
               Save Data Source
             </button>
-          </div>
+          </div> */}
         </div>
 
         {/* Edit Modal */}

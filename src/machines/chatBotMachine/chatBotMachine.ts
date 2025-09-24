@@ -99,10 +99,17 @@ const chatBotMachine = setup({
     idle: {
       on: {
         SYNC_SELECTED_CHATBOT: {
-          actions: assign({
-            selectedChatbot: ({ event }) => (event as any).data,
-            error: () => null,
-          }),
+          actions: [
+            assign({
+              selectedChatbot: ({ event }) => (event as any).data,
+              error: () => null,
+            }),
+            ({ event }) => {
+              if ((event as any).data) {
+                store.dispatch(setSelectedChatbot((event as any).data));
+              }
+            },
+          ],
         },
         CREATE_CHATBOT: {
           target: 'creatingChatbot',

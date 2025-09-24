@@ -12,6 +12,16 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -40,6 +50,7 @@ import {
 import { CodeBlock } from "@/components/ai-elements/code-block";
 import { Loader } from "@/components/ai-elements/loader";
 
+
 // Types
 interface ChatMessage {
   id: string;
@@ -48,6 +59,8 @@ interface ChatMessage {
   sender: "user" | "ai" | "agent";
   role: "user" | "agent" | "assistant";
   reasoning?: string;
+  isClientOriginated?: boolean;
+  isStreaming?: boolean;
   reactions?: {
     liked: boolean;
     disliked: boolean;
@@ -88,7 +101,7 @@ const conversationStorage = {
         displayName,
       };
       localStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(data));
-      console.log("💾 [Storage] Conversation stored:", data);
+      
     } catch (error) {
       console.error("❌ [Storage] Failed to store conversation:", error);
     }
@@ -110,14 +123,14 @@ const conversationStorage = {
         // Check if conversation is not too old (24 hours)
         const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
         if (Date.now() - data.timestamp < maxAge) {
-          console.log("💾 [Storage] Conversation retrieved:", data);
+         
           return data;
         } else {
-          console.log("💾 [Storage] Conversation expired, removing...");
+         
           conversationStorage.clear();
         }
       } else {
-        console.log("💾 [Storage] Conversation mismatch, clearing...");
+        
         conversationStorage.clear();
       }
 
@@ -132,7 +145,7 @@ const conversationStorage = {
   clear: () => {
     try {
       localStorage.removeItem(CONVERSATION_STORAGE_KEY);
-      console.log("💾 [Storage] Conversation cleared");
+   
     } catch (error) {
       console.error("❌ [Storage] Failed to clear conversation:", error);
     }
@@ -146,7 +159,7 @@ const conversationStorage = {
         const data: StoredConversation = JSON.parse(stored);
         data.displayName = displayName;
         localStorage.setItem(CONVERSATION_STORAGE_KEY, JSON.stringify(data));
-        console.log("💾 [Storage] Display name updated:", displayName);
+    
       }
     } catch (error) {
       console.error("❌ [Storage] Failed to update display name:", error);
@@ -241,23 +254,6 @@ interface ChatbotComponentProps {
   chatbotId: string;
 }
 
-// UI Components
-const Avatar = ({
-  src,
-  alt,
-  className = "",
-}: {
-  src: string;
-  alt: string;
-  className?: string;
-}) => (
-  <div
-    className={`w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center ${className}`}
-  >
-    <img src={src} alt={alt} className="w-4 h-4 rounded-full" />
-  </div>
-);
-
 // MessageBubble removed in favor of rich UI components below
 
 const ChatInput = ({
@@ -268,6 +264,7 @@ const ChatInput = ({
   isLoading,
   config,
   chatbot,
+  onHumanAgentClick,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -276,6 +273,7 @@ const ChatInput = ({
   isLoading: boolean;
   config?: any;
   chatbot?: any;
+  onHumanAgentClick: () => void;
 }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -287,7 +285,10 @@ const ChatInput = ({
     <div className="border-t bg-background p-4 flex-shrink-0">
       <div className="flex items-center justify-between mb-3">
         {chatbot?.routing?.escalationEnabled && (
-          <button className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:text-blue-700 transition-colors">
+          <button 
+            onClick={onHumanAgentClick}
+            className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:text-blue-700 transition-colors"
+          >
             🎧 Talk to Human Agent
           </button>
         )}
@@ -353,23 +354,20 @@ export default function ChatbotComponent({
   const [typingState, setTypingState] = useState<TypingState>({
     isTyping: false,
   });
-  const [connectionStatus, setConnectionStatus] = useState<
-    "disconnected" | "connecting" | "connected" | "error"
-  >("disconnected");
   const [conversationId, setConversationId] = useState<string | null>(null);
-  console.log(config,
-    "chatbot config"
-  
-  )
   // Keep conversationIdRef in sync with conversationId state
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
   const [conversationStarted, setConversationStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [limitError, setLimitError] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  // Modal state
+  const [isHumanAgentModalOpen, setIsHumanAgentModalOpen] = useState(false);
+  const [humanAgentReason, setHumanAgentReason] = useState("");
   // Streaming state
-  const [streamInFlight, setStreamInFlight] = useState(false);
+  const streamInFlightRef = useRef(false);
   const streamBufferRef = useRef<string>("");
   const provisionalAssistantIdRef = useRef<string | null>(null);
   // Queue first user query until conversation is joined
@@ -384,6 +382,7 @@ export default function ChatbotComponent({
   const isInitializedRef = useRef(false);
   const conversationStartedRef = useRef(false);
   const lastMessageRef = useRef<string>("");
+  const lastSubmitTimeRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const conversationIdRef = useRef<string | null>(null);
 
@@ -418,15 +417,12 @@ export default function ChatbotComponent({
 
   // Helper function to ensure latest message is in viewport
   const ensureLatestMessageVisible = useCallback(() => {
-    // Method 1: Try scrollIntoView
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({
         behavior: "instant",
         block: "end",
       });
     }
-
-    // Method 2: Try all possible containers
     const allContainers = [
       document.querySelector(".widget-messages"),
       document.querySelector(".conversation"),
@@ -444,7 +440,6 @@ export default function ChatbotComponent({
       }
     });
 
-    // Method 3: Fallback - scroll to bottom of page
     if (!scrolled) {
       window.scrollTo(0, document.body.scrollHeight);
     }
@@ -453,7 +448,7 @@ export default function ChatbotComponent({
   // Auto-scroll to bottom
   useEffect(() => {
     if (isLoadingHistoryRef.current) {
-      // When loading history, use requestAnimationFrame for better timing
+      
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           ensureLatestMessageVisible();
@@ -473,7 +468,7 @@ export default function ChatbotComponent({
     }
 
     isInitializedRef.current = true;
-    setConnectionStatus("connecting");
+    
 
     const newSocket = io(config.socketUrl, {
       transports: ["websocket"],
@@ -490,14 +485,12 @@ export default function ChatbotComponent({
     newSocket.on("connect", () => {
       console.log("🟢 [Socket] Connected:", newSocket.id);
       setIsConnected(true);
-      setConnectionStatus("connected");
       setError(null);
     });
 
     newSocket.on("disconnect", (reason) => {
       console.log("🔴 [Socket] Disconnected:", reason);
       setIsConnected(false);
-      setConnectionStatus("disconnected");
       isInitializedRef.current = false;
     });
 
@@ -510,13 +503,12 @@ export default function ChatbotComponent({
           ? "Chatbot not found"
           : `Connection failed: ${error.message}`;
       setError(errorMessage);
-      setConnectionStatus("error");
       isInitializedRef.current = false;
     });
 
     // Message events
     newSocket.on("message", (data) => {
-      console.log("🟢 [Socket] Message received:", data);
+   
 
       if (data.message) {
         const messageData: ChatMessage = {
@@ -528,19 +520,47 @@ export default function ChatbotComponent({
           role: data.message.sender === "user" ? "user" : "assistant",
         };
 
+        // ✅ Block assistant messages completely when streaming is in flight
+        if (messageData.role === "assistant" && streamInFlightRef.current) {
+          return;
+        }
+
         setMessages((prev) => {
-          // Check for duplicates using messageId if available, otherwise use content + timestamp
+          // Check for duplicates using message ID (primary) or messageId (secondary)
           const isDuplicate = prev.some((msg) => {
-            if (data.message.messageId && msg.id === data.message.messageId) {
-              return true; // Exact ID match
+            // Primary: Check if message has _id and it matches
+            if (data.message._id && msg.id === data.message._id) {
+              return true;
             }
-            // Fallback: content + timestamp check (within 5 seconds)
-            return (
-              msg.content === messageData.content &&
-              Math.abs(
-                msg.timestamp.getTime() - messageData.timestamp.getTime()
-              ) < 5000
-            );
+            // Secondary: Check if message has messageId and it matches
+            if (data.message.messageId && msg.id === data.message.messageId) {
+              return true;
+            }
+            // Tertiary: Check if msg.id matches either _id or messageId from incoming message
+            if (msg.id && (msg.id === data.message._id || msg.id === data.message.messageId)) {
+              return true;
+            }
+            
+            // Special case: Detect server echo of user messages
+            // Only block server echoes of client-originated messages, not new user messages
+            if (messageData.role === "user" && msg.role === "user" && msg.isClientOriginated) {
+              return (
+                msg.content === messageData.content &&
+                msg.sender === messageData.sender &&
+                Math.abs(msg.timestamp.getTime() - messageData.timestamp.getTime()) < 10000 // 10 second window
+              );
+            }
+            
+            // Only use content comparison as absolute last resort when no IDs are available
+            // if (!data.message._id && !data.message.messageId && !msg.id) {
+            //   return (
+            //     msg.content === messageData.content &&
+            //     Math.abs(
+            //       msg.timestamp.getTime() - messageData.timestamp.getTime()
+            //     ) < 5000
+            //   );
+            // }
+            return false;
           });
 
           if (isDuplicate) {
@@ -552,9 +572,11 @@ export default function ChatbotComponent({
 
         setIsLoading(false);
         // If a final assistant message arrives via this channel, finalize stream if applicable
+        // BUT only if streaming is NOT currently in flight to prevent flickering
         if (
           messageData.role === "assistant" &&
-          provisionalAssistantIdRef.current
+          provisionalAssistantIdRef.current &&
+          !streamInFlightRef.current // ✅ Prevent interference with active streams
         ) {
           setMessages((prev) =>
             prev.map((m) =>
@@ -565,7 +587,7 @@ export default function ChatbotComponent({
           );
           provisionalAssistantIdRef.current = null;
           streamBufferRef.current = "";
-          setStreamInFlight(false);
+          streamInFlightRef.current = false;
           setTypingState({ isTyping: false });
         }
       }
@@ -573,12 +595,19 @@ export default function ChatbotComponent({
 
     // Typing events
     newSocket.on("typing", (data) => {
-      console.log("🔴 [Socket] Typing event received:", data);
-
-      if (data.sender === "ai" || data.senderName === "AI Assistant") {
+      // Handle both AI and Agent typing events
+      if (data.sender === "ai" || data.senderName === "AI Assistant" || data.sender === "agent") {
+        // ✅ Allow typing indicator to show BEFORE streaming starts
+        // Only block typing indicator if we're actively receiving stream chunks (for AI only)
+        if (data.sender === "ai" && streamInFlightRef.current && data.isTyping && provisionalAssistantIdRef.current) {
+          console.log("🚫 Ignoring AI typing indicator - stream chunks already being received");
+          return;
+        }
+        
         setTypingState({
           isTyping: data.isTyping,
           sender: data.sender,
+          agentName: data.senderName || (data.sender === "agent" ? "Agent" : undefined),
         });
       }
     });
@@ -587,9 +616,10 @@ export default function ChatbotComponent({
     newSocket.on(
       "rag-stream-chunk",
       (data: { conversationId?: string; chunk: string }) => {
-        console.log("[Widget][Stream] chunk:", data);
-        if (!streamInFlight) {
-          // Ignore late chunks
+        console.log("🔄 Received stream chunk:", data.chunk, "Stream in flight:", streamInFlightRef.current);
+        
+        if (!streamInFlightRef.current) {
+          console.log("🚫 Ignoring late chunk - stream not in flight");
           return;
         }
         // Ensure provisional assistant message exists
@@ -601,8 +631,12 @@ export default function ChatbotComponent({
             timestamp: new Date(),
             sender: "ai",
             role: "assistant",
+            isStreaming: true, // ✅ Mark as streaming for UI indicators
           };
           setMessages((prev) => [...prev, provisional]);
+          // ✅ Clear typing indicator now that streaming content has started
+          setTypingState({ isTyping: false });
+          console.log("🎯 First chunk received - clearing typing indicator and showing streaming message");
         }
         // Append chunk
         streamBufferRef.current = `${streamBufferRef.current}${data.chunk}`;
@@ -622,8 +656,19 @@ export default function ChatbotComponent({
     // Note: backend does not emit 'rag-final-message'; finalization happens on 'message' + 'rag-stream-complete'
 
     newSocket.on("rag-stream-complete", () => {
-      console.log("[Widget][Stream] complete");
-      setStreamInFlight(false);
+      // Finalize the streaming message by removing the isStreaming flag
+      if (provisionalAssistantIdRef.current) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === provisionalAssistantIdRef.current
+              ? { ...m, isStreaming: false } // Mark as no longer streaming
+              : m
+          )
+        );
+      }
+      
+      streamInFlightRef.current = false;
+      
       setIsLoading(false);
       setTypingState({ isTyping: false });
       streamBufferRef.current = "";
@@ -633,7 +678,7 @@ export default function ChatbotComponent({
     newSocket.on("error", (e: any) => {
       // Stream errors may also arrive via a namespaced event. Handle generic error too.
       console.error("[Widget][Stream] error:", e);
-      setStreamInFlight(false);
+      streamInFlightRef.current = false;
       setIsLoading(false);
       setTypingState({ isTyping: false });
     });
@@ -719,21 +764,20 @@ export default function ChatbotComponent({
             conversationId: data.conversationId,
             history: currentMessages.slice(-8), // Last 8 messages for context
           };
-          console.log("[Widget][Stream] deferred request start", {
-            query,
-            context: contextPayload,
-          });
+     
           socketRef.current.emit("request-rag-response-stream", {
             query,
             context: contextPayload,
           });
-          setStreamInFlight(true);
+          streamInFlightRef.current = true;
+          // ✅ Clear any existing typing indicators when starting stream
+          setTypingState({ isTyping: false });
         }
       }
     });
 
     newSocket.on("join", (data) => {
-      console.log("[Socket] Join event received:", data);
+      
 
       if (data.message) {
         const joinMessage: ChatMessage = {
@@ -782,15 +826,14 @@ export default function ChatbotComponent({
             .map((m) => ({ role: m.role, content: m.content })),
           reactions: data.reactions,
         };
-        console.log("[Widget][Stream] deferred request start (join)", {
-          query,
-          context: contextPayload,
-        });
+      
         socketRef.current.emit("request-rag-response-stream", {
           query,
           context: contextPayload,
         });
-        setStreamInFlight(true);
+        streamInFlightRef.current = true;
+        console.log("🚀 Starting stream - streamInFlight set to:", streamInFlightRef.current);
+        // ✅ Don't clear typing indicators immediately - let them show until first chunk arrives
       }
     });
 
@@ -829,7 +872,7 @@ export default function ChatbotComponent({
 
     // Cleanup on unmount
     return () => {
-      console.log("🔌 [Chat] Cleaning up socket connection...");
+    
       if (newSocket) {
         newSocket.off("connect");
         newSocket.off("disconnect");
@@ -840,7 +883,6 @@ export default function ChatbotComponent({
         newSocket.off("conversation-ended");
         newSocket.off("join");
         newSocket.off("rag-stream-chunk");
-        // 'rag-final-message' not used by backend
         newSocket.off("rag-stream-complete");
         newSocket.off("error");
         newSocket.off("react-message");
@@ -902,7 +944,7 @@ export default function ChatbotComponent({
           conversationId,
           isTyping: true,
         });
-        console.log("⌨️ [Chat] User typing");
+       
 
         // Set timeout to stop typing after inactivity
         typingTimeoutRef.current = setTimeout(() => {
@@ -925,24 +967,25 @@ export default function ChatbotComponent({
   );
 
   const handleSubmit = useCallback(() => {
-    if (!input.trim() || !isConnected || !socketRef.current) return;
+    if (!input.trim() || !isConnected || !socketRef.current ) return;
 
-    if (lastMessageRef.current === input.trim()) {
+    // Prevent rapid double submissions with debouncing
+    const now = Date.now();
+    if (lastSubmitTimeRef.current && (now - lastSubmitTimeRef.current) < 500) {
       return;
     }
+    lastSubmitTimeRef.current = now;
 
     // Check message limit from backend config
     const maxMessages = config.settings.maxMessagesPerConversation;
     if (maxMessages && messages.length >= maxMessages) {
-      console.log(`🚫 [Chat] Message limit reached: ${maxMessages}`);
-      // Could show a toast/alert here
+      setLimitError(`Message limit reached: ${maxMessages} messages per conversation`);
       return;
     }
 
     // Stop typing when sending message
     if (socketRef.current && conversationId) {
       socketRef.current.emit("typing", { conversationId, isTyping: false });
-      console.log("⌨️ [Chat] User stopped typing (message sent)");
     }
     // Clear timeout
     if (typingTimeoutRef.current) {
@@ -950,7 +993,7 @@ export default function ChatbotComponent({
       typingTimeoutRef.current = null;
     }
 
-    console.log("📤 [Chat] Submitting message:", input);
+  
 
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}-${Math.random()}`,
@@ -958,16 +1001,14 @@ export default function ChatbotComponent({
       timestamp: new Date(),
       sender: "user",
       role: "user",
+      isClientOriginated: true,
     };
 
     setMessages((prev) => {
-      const isDuplicate = prev.some(
-        (msg) =>
-          msg.content === userMessage.content &&
-          msg.role === "user" &&
-          Math.abs(msg.timestamp.getTime() - userMessage.timestamp.getTime()) <
-            1000
-      );
+      const isDuplicate = prev.some((msg) => {
+        // Only prevent duplicates if the exact same ID exists
+        return userMessage.id && msg.id === userMessage.id;
+      });
 
       if (isDuplicate) {
         return prev;
@@ -981,7 +1022,7 @@ export default function ChatbotComponent({
       const query = input;
       if (!conversationStartedRef.current || !conversationId) {
         pendingQueryRef.current = query;
-        console.log("[Widget][Stream] queued request until join", { query });
+        
       } else {
         const contextPayload: any = {
           chatbotId,
@@ -992,21 +1033,20 @@ export default function ChatbotComponent({
             .slice(-8)
             .map((m) => ({ role: m.role, content: m.content })),
         };
-        console.log("[Widget][Stream] request start", {
-          query,
-          context: contextPayload,
-        });
+       
         socketRef.current.emit("request-rag-response-stream", {
           query,
           context: contextPayload,
         });
-        setStreamInFlight(true);
+        streamInFlightRef.current = true;
+        console.log("🚀 Starting stream - streamInFlight set to:", streamInFlightRef.current);
+        // ✅ Don't clear typing indicators immediately - let them show until first chunk arrives
       }
     }
 
-    lastMessageRef.current = input.trim();
     setInput("");
     setIsLoading(true);
+    setLimitError(null); // Clear any previous limit error
   }, [
     input,
     isConnected,
@@ -1073,11 +1113,10 @@ export default function ChatbotComponent({
     setConversationStarted(false);
     setConversationId(null);
     setError(null);
+    setLimitError(null);
     setDisplayName(null);
     conversationStartedRef.current = false;
     lastMessageRef.current = "";
-
-    // Clear stored conversation data
     conversationStorage.clear();
   }, []);
 
@@ -1145,11 +1184,9 @@ export default function ChatbotComponent({
       }
     };
   }, [conversationId]);
-
-  const primaryColor =
-    config.ui?.primaryColor || config.settings.theme.primaryColor;
   const backgroundColor = config.settings.theme.backgroundColor;
   const fontFamily = config.settings.theme.fontFamily;
+  console.log(messages,"this is messages array")
 
   return (
     <div
@@ -1204,6 +1241,18 @@ export default function ChatbotComponent({
       {error && (
         <div className="px-3 py-2 bg-red-100 border-b border-red-200">
           <p className="text-red-700 text-xs">Error: {error}</p>
+        </div>
+      )}
+
+      {/* Limit Error Notification */}
+      {limitError && (
+        <div className="px-3 py-2 bg-red-100 border-b border-red-200">
+          <div className="flex items-center gap-2">
+            <svg className="h-4 w-4 text-red-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-red-700 text-xs font-medium">{limitError}</p>
+          </div>
         </div>
       )}
 
@@ -1433,7 +1482,55 @@ export default function ChatbotComponent({
         isLoading={isLoading}
         config={config}
         chatbot={config}
+        onHumanAgentClick={() => setIsHumanAgentModalOpen(true)}
       />
+
+      {/* Human Agent Modal */}
+      <Dialog open={isHumanAgentModalOpen} onOpenChange={setIsHumanAgentModalOpen}>
+        <DialogContent className="w-full max-w-[90%] mx-auto  rounded-lg">
+          <DialogHeader>
+            <DialogTitle>Talk to Human Agent</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="reason">Please tell us why you'd like to speak with a human agent:</Label>
+              <Input
+                id="reason"
+                value={humanAgentReason}
+                onChange={(e) => setHumanAgentReason(e.target.value)}
+                placeholder="Describe your reason..."
+                className="w-full"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsHumanAgentModalOpen(false);
+                setHumanAgentReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (socketRef.current && conversationId) {
+                  socketRef.current.emit('escalate', {
+                    conversationId,
+                    reason: humanAgentReason || 'User requested human agent'
+                  });
+                }
+                setIsHumanAgentModalOpen(false);
+                setHumanAgentReason("");
+              }}
+              disabled={!humanAgentReason.trim()}
+            >
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

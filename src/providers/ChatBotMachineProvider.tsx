@@ -195,28 +195,35 @@ export function ChatBotMachineProvider({
   const effectiveSession = session || serverSession;
   const reduxSelectedChatbot = useReduxSelector(selectSelectedChatbot);
 
+  // Get chatbots from session only
+  const sessionChatbots = effectiveSession?.chatbots || null;
+  
+  // Use first chatbot as default selectedChatbot if no Redux selection exists
+  const defaultSelectedChatbot = sessionChatbots && sessionChatbots.length > 0 ? sessionChatbots[0] : null;
+  const initialSelectedChatbot = reduxSelectedChatbot || defaultSelectedChatbot;
+
+
+
   const [state, send, chatBotService] = useMachine(chatBotMachine, {
     input: {
       tenantId: effectiveSession?.tenantId || null,
       userId: effectiveSession?.user?.id || null,
       accessToken: (effectiveSession as any)?.accessToken || (effectiveSession?.user as any)?.accessToken || null,
-      chatbots: effectiveSession?.chatbots || null,
+      chatbots: sessionChatbots,
       defaultChatbots: defaultChatbots,
-      selectedChatbot: (effectiveSession as any)?.selectedChatbot || null,
+      selectedChatbot: initialSelectedChatbot,
       error: null,
       isLoading: false,
     },
   });
 
- 
-//TODO: Remove this after testing
-  // Sync machine with Redux when Redux state changes (like on refresh)
+  // Sync Redux with the default selected chatbot on initial load
   React.useEffect(() => {
-    if (reduxSelectedChatbot && (!state.context.selectedChatbot || 
-        (reduxSelectedChatbot as any).updatedAt !== (state.context.selectedChatbot as any)?.updatedAt)) {
-      send({ type: 'SYNC_SELECTED_CHATBOT', data: reduxSelectedChatbot as any });
+    if (defaultSelectedChatbot && !reduxSelectedChatbot) {
+      console.log('ChatBotMachineProvider - Syncing Redux with default chatbot:', defaultSelectedChatbot.name);
+      send({ type: 'SYNC_SELECTED_CHATBOT', data: defaultSelectedChatbot });
     }
-  }, [reduxSelectedChatbot, state.context.selectedChatbot, send]);
+  }, [defaultSelectedChatbot, reduxSelectedChatbot, send]);
 
   return <ChatBotMachineContext.Provider value={{ state, send, chatBotService }}>{children}</ChatBotMachineContext.Provider>;
 };

@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Socket } from 'socket.io-client';
 
@@ -23,9 +22,9 @@ export interface UseTypingIndicatorsOptions {
   currentUserId?: string;
   currentUserName?: string;
   typingTimeout?: number;
-  debounceDelay?: number; // Debounce delay for user typing events
-  maxParticipants?: number; // Maximum participants to track
-  enableSelfTyping?: boolean; // Whether to show current user's typing
+  debounceDelay?: number;
+  maxParticipants?: number; 
+  enableSelfTyping?: boolean;
 }
 
 export interface UseTypingIndicatorsReturn extends TypingState {
@@ -125,8 +124,7 @@ export function useTypingIndicators({
       const existingIndex = prev.participants.findIndex(p => p.id === participant.id);
       
       if (existingIndex >= 0) {
-        // Update existing participant
-        console.log('🔤 Updating existing participant at index:', existingIndex);
+     
         const newParticipants = [...prev.participants];
         newParticipants[existingIndex] = {
           ...newParticipants[existingIndex],
@@ -140,11 +138,10 @@ export function useTypingIndicators({
           isTyping: true,
           lastActivity: now,
         };
-        // console.log('🔤 Updated state:', newState);
+      
         return newState;
       } else {
-        // Add new participant
-        // console.log('🔤 Adding new participant');
+       
         const newParticipant: TypingParticipant = {
           ...participant,
           startedAt: now,
@@ -195,13 +192,7 @@ export function useTypingIndicators({
 
   // Send typing event to server
   const sendTypingEvent = useCallback((isTyping: boolean) => {
-    // console.log('🔤 sendTypingEvent called:', {
-    //   isTyping,
-    //   conversationId,
-    //   currentUserName,
-    //   socketConnected: socket?.connected,
-    //   socketExists: !!socket
-    // });
+ 
     
     const typingData = { 
       conversationId, 
@@ -209,7 +200,7 @@ export function useTypingIndicators({
       senderName: currentUserName,
     };
     
-    // console.log('🔤 Emitting typing event:', typingData);
+ 
     socket?.emit('typing', typingData);
   }, [socket, conversationId, currentUserName]);
 
@@ -241,12 +232,7 @@ export function useTypingIndicators({
 
   // Stop typing (called when user stops typing)
   const stopTyping = useCallback(() => {
-    // console.log('🔤 stopTyping called:', {
-    //   socketConnected: socket?.connected,
-    //   userTypingRef: userTypingRef.current,
-    //   enableSelfTyping,
-    //   currentUserId
-    // });
+
     
     if (!socket || !userTypingRef.current) {
       console.warn('🔤 stopTyping: Cannot stop typing', {
@@ -374,18 +360,10 @@ export function useTypingIndicators({
 
   // Handle socket typing events
   useEffect(() => {
-    // console.log('🔤 Setting up typing event listener:', {
-    //   socketConnected: socket?.connected,
-    //   conversationId,
-    //   currentUserId,
-    //   enableSelfTyping
-    // });
-    
     if (!socket) {
       console.warn('🔤 No socket available for typing events');
       return;
     }
-
     const handleTypingEvent = (data: any) => {
       const { sender, senderName, isTyping, conversationId: eventConversationId } = data;
       

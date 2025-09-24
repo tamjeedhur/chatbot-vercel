@@ -3,8 +3,8 @@ import authReducer from './slices/authSlice';
 import userReducer from './slices/userSlice';
 import chatbotReducer from './slices/chatbotSlice';
 import tenantReducer from './slices/tenantSlice';
-import dataSourcesReducer from './slices/dataSourcesSlice';
 import scrapReducer from './slices/scrapSlice';
+import dataSourcesReducer from './slices/datasourcesSlice';
 
 export const makeStore = () => {
   const rootReducer = {
@@ -12,8 +12,8 @@ export const makeStore = () => {
     user: userReducer,
     chatbot: chatbotReducer,
     tenant: tenantReducer,
-    dataSources: dataSourcesReducer,
     scrap: scrapReducer,
+    dataSources: dataSourcesReducer,
   } as const;
 
   return configureStore({

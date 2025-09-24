@@ -62,40 +62,40 @@ export interface UseConversationUIReturn extends ConversationUIState {
   updatePreferences: (updates: Partial<UIPreferences>) => void;
   resetPreferences: () => void;
   togglePreference: (key: keyof UIPreferences) => void;
-  
+
   // Layout management
   toggleSidebar: () => void;
   setSidebarWidth: (width: number) => void;
   setMessageInputHeight: (height: number) => void;
   toggleFullscreen: () => void;
   updateLayout: (updates: Partial<ConversationLayout>) => void;
-  
+
   // Scroll management
   scrollToBottom: () => void;
   scrollToTop: () => void;
   scrollToMessage: (messageId: string) => void;
   markAsRead: () => void;
   updateScrollState: (state: Partial<ScrollState>) => void;
-  
+
   // Message selection
   selectMessage: (messageId: string | null) => void;
   highlightMessage: (messageId: string | null) => void;
   clearSelection: () => void;
-  
+
   // Context menu
   showContextMenu: (position: { x: number; y: number }) => void;
   hideContextMenu: () => void;
-  
+
   // Visibility and focus
   setVisible: (visible: boolean) => void;
   setFocused: (focused: boolean) => void;
-  
+
   // Utilities
   getMessagePosition: (messageId: string) => number | null;
   isMessageVisible: (messageId: string) => boolean;
   getVisibleMessages: () => string[];
   reset: () => void;
-  
+
   // Refs
   containerRef: React.RefObject<HTMLDivElement | null>;
   messagesRef: React.RefObject<HTMLDivElement | null>;
@@ -114,7 +114,6 @@ export function useConversationUI({
   onScrollChange,
   onVisibilityChange,
 }: UseConversationUIOptions = {}): UseConversationUIReturn {
-
   // Default preferences
   const defaultPreferences: UIPreferences = {
     theme: 'auto',
@@ -150,15 +149,18 @@ export function useConversationUI({
   }, [enablePersistence, storageKey, defaultPreferences]);
 
   // Save preferences to storage
-  const savePreferences = useCallback((preferences: UIPreferences) => {
-    if (!enablePersistence || typeof window === 'undefined') return;
+  const savePreferences = useCallback(
+    (preferences: UIPreferences) => {
+      if (!enablePersistence || typeof window === 'undefined') return;
 
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(preferences));
-    } catch (error) {
-      console.error('Failed to save UI preferences:', error);
-    }
-  }, [enablePersistence, storageKey]);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(preferences));
+      } catch (error) {
+        console.error('Failed to save UI preferences:', error);
+      }
+    },
+    [enablePersistence, storageKey]
+  );
 
   // Detect mobile and orientation
   const detectLayout = useCallback((): ConversationLayout => {
@@ -200,25 +202,28 @@ export function useConversationUI({
   const messagesRef = useRef<HTMLDivElement>(null);
 
   const updateState = useCallback((updates: Partial<ConversationUIState>) => {
-    setState(prev => ({ ...prev, ...updates }));
+    setState((prev) => ({ ...prev, ...updates }));
   }, []);
 
   // Update preferences
-  const updatePreferences = useCallback((updates: Partial<UIPreferences>) => {
-    const newPreferences = { ...state.preferences, ...updates };
-    
-    setState(prev => ({
-      ...prev,
-      preferences: newPreferences,
-    }));
+  const updatePreferences = useCallback(
+    (updates: Partial<UIPreferences>) => {
+      const newPreferences = { ...state.preferences, ...updates };
 
-    savePreferences(newPreferences);
-    onPreferenceChange?.(newPreferences);
-  }, [state.preferences, savePreferences, onPreferenceChange]);
+      setState((prev) => ({
+        ...prev,
+        preferences: newPreferences,
+      }));
+
+      savePreferences(newPreferences);
+      onPreferenceChange?.(newPreferences);
+    },
+    [state.preferences, savePreferences, onPreferenceChange]
+  );
 
   // Reset preferences
   const resetPreferences = useCallback(() => {
-    setState(prev => ({
+    setState((prev) => ({
       ...prev,
       preferences: defaultPreferences,
     }));
@@ -228,13 +233,16 @@ export function useConversationUI({
   }, [defaultPreferences, savePreferences, onPreferenceChange]);
 
   // Toggle preference
-  const togglePreference = useCallback((key: keyof UIPreferences) => {
-    const currentValue = state.preferences[key];
-    
-    if (typeof currentValue === 'boolean') {
-      updatePreferences({ [key]: !currentValue } as Partial<UIPreferences>);
-    }
-  }, [state.preferences, updatePreferences]);
+  const togglePreference = useCallback(
+    (key: keyof UIPreferences) => {
+      const currentValue = state.preferences[key];
+
+      if (typeof currentValue === 'boolean') {
+        updatePreferences({ [key]: !currentValue } as Partial<UIPreferences>);
+      }
+    },
+    [state.preferences, updatePreferences]
+  );
 
   // Layout management
   const toggleSidebar = useCallback(() => {
@@ -242,47 +250,56 @@ export function useConversationUI({
       ...state.layout,
       sidebarVisible: !state.layout.sidebarVisible,
     };
-    
-    setState(prev => ({ ...prev, layout: newLayout }));
+
+    setState((prev) => ({ ...prev, layout: newLayout }));
     onLayoutChange?.(newLayout);
   }, [state.layout, onLayoutChange]);
 
-  const setSidebarWidth = useCallback((width: number) => {
-    const newLayout = {
-      ...state.layout,
-      sidebarWidth: Math.max(200, Math.min(500, width)),
-    };
-    
-    setState(prev => ({ ...prev, layout: newLayout }));
-    onLayoutChange?.(newLayout);
-  }, [state.layout, onLayoutChange]);
+  const setSidebarWidth = useCallback(
+    (width: number) => {
+      const newLayout = {
+        ...state.layout,
+        sidebarWidth: Math.max(200, Math.min(500, width)),
+      };
 
-  const setMessageInputHeight = useCallback((height: number) => {
-    const newLayout = {
-      ...state.layout,
-      messageInputHeight: Math.max(40, Math.min(200, height)),
-    };
-    
-    setState(prev => ({ ...prev, layout: newLayout }));
-    onLayoutChange?.(newLayout);
-  }, [state.layout, onLayoutChange]);
+      setState((prev) => ({ ...prev, layout: newLayout }));
+      onLayoutChange?.(newLayout);
+    },
+    [state.layout, onLayoutChange]
+  );
+
+  const setMessageInputHeight = useCallback(
+    (height: number) => {
+      const newLayout = {
+        ...state.layout,
+        messageInputHeight: Math.max(40, Math.min(200, height)),
+      };
+
+      setState((prev) => ({ ...prev, layout: newLayout }));
+      onLayoutChange?.(newLayout);
+    },
+    [state.layout, onLayoutChange]
+  );
 
   const toggleFullscreen = useCallback(() => {
     const newLayout = {
       ...state.layout,
       isFullscreen: !state.layout.isFullscreen,
     };
-    
-    setState(prev => ({ ...prev, layout: newLayout }));
+
+    setState((prev) => ({ ...prev, layout: newLayout }));
     onLayoutChange?.(newLayout);
   }, [state.layout, onLayoutChange]);
 
-  const updateLayout = useCallback((updates: Partial<ConversationLayout>) => {
-    const newLayout = { ...state.layout, ...updates };
-    
-    setState(prev => ({ ...prev, layout: newLayout }));
-    onLayoutChange?.(newLayout);
-  }, [state.layout, onLayoutChange]);
+  const updateLayout = useCallback(
+    (updates: Partial<ConversationLayout>) => {
+      const newLayout = { ...state.layout, ...updates };
+
+      setState((prev) => ({ ...prev, layout: newLayout }));
+      onLayoutChange?.(newLayout);
+    },
+    [state.layout, onLayoutChange]
+  );
 
   // Scroll management
   const scrollToBottom = useCallback(() => {
@@ -313,46 +330,58 @@ export function useConversationUI({
     }
   }, [state.hasUnreadMessages, state.scroll, updateState]);
 
-  const updateScrollState = useCallback((scrollUpdates: Partial<ScrollState>) => {
-    const newScrollState = { ...state.scroll, ...scrollUpdates };
-    
-    setState(prev => ({
-      ...prev,
-      scroll: newScrollState,
-    }));
+  const updateScrollState = useCallback(
+    (scrollUpdates: Partial<ScrollState>) => {
+      const newScrollState = { ...state.scroll, ...scrollUpdates };
 
-    onScrollChange?.(newScrollState);
-  }, [state.scroll, onScrollChange]);
+      setState((prev) => ({
+        ...prev,
+        scroll: newScrollState,
+      }));
+
+      onScrollChange?.(newScrollState);
+    },
+    [state.scroll, onScrollChange]
+  );
 
   // Message selection
-  const selectMessage = useCallback((messageId: string | null) => {
-    updateState({ selectedMessageId: messageId });
-  }, [updateState]);
+  const selectMessage = useCallback(
+    (messageId: string | null) => {
+      updateState({ selectedMessageId: messageId });
+    },
+    [updateState]
+  );
 
-  const highlightMessage = useCallback((messageId: string | null) => {
-    updateState({ highlightedMessageId: messageId });
-    
-    if (messageId) {
-      setTimeout(() => {
-        updateState({ highlightedMessageId: null });
-      }, 3000); // Clear highlight after 3 seconds
-    }
-  }, [updateState]);
+  const highlightMessage = useCallback(
+    (messageId: string | null) => {
+      updateState({ highlightedMessageId: messageId });
+
+      if (messageId) {
+        setTimeout(() => {
+          updateState({ highlightedMessageId: null });
+        }, 3000); // Clear highlight after 3 seconds
+      }
+    },
+    [updateState]
+  );
 
   const clearSelection = useCallback(() => {
-    updateState({ 
+    updateState({
       selectedMessageId: null,
       highlightedMessageId: null,
     });
   }, [updateState]);
 
   // Context menu
-  const showContextMenu = useCallback((position: { x: number; y: number }) => {
-    updateState({
-      contextMenuVisible: true,
-      contextMenuPosition: position,
-    });
-  }, [updateState]);
+  const showContextMenu = useCallback(
+    (position: { x: number; y: number }) => {
+      updateState({
+        contextMenuVisible: true,
+        contextMenuPosition: position,
+      });
+    },
+    [updateState]
+  );
 
   const hideContextMenu = useCallback(() => {
     updateState({
@@ -362,22 +391,28 @@ export function useConversationUI({
   }, [updateState]);
 
   // Visibility and focus
-  const setVisible = useCallback((visible: boolean) => {
-    updateState({ isVisible: visible });
-    onVisibilityChange?.(visible);
-    
-    if (visible && state.preferences.markReadOnView) {
-      markAsRead();
-    }
-  }, [updateState, onVisibilityChange, state.preferences.markReadOnView, markAsRead]);
+  const setVisible = useCallback(
+    (visible: boolean) => {
+      updateState({ isVisible: visible });
+      onVisibilityChange?.(visible);
 
-  const setFocused = useCallback((focused: boolean) => {
-    updateState({ isFocused: focused });
-    
-    if (focused && state.preferences.markReadOnView) {
-      markAsRead();
-    }
-  }, [updateState, state.preferences.markReadOnView, markAsRead]);
+      if (visible && state.preferences.markReadOnView) {
+        markAsRead();
+      }
+    },
+    [updateState, onVisibilityChange, state.preferences.markReadOnView, markAsRead]
+  );
+
+  const setFocused = useCallback(
+    (focused: boolean) => {
+      updateState({ isFocused: focused });
+
+      if (focused && state.preferences.markReadOnView) {
+        markAsRead();
+      }
+    },
+    [updateState, state.preferences.markReadOnView, markAsRead]
+  );
 
   // Utilities
   const getMessagePosition = useCallback((messageId: string): number | null => {
@@ -395,11 +430,8 @@ export function useConversationUI({
     if (messageElement && messagesRef.current) {
       const containerRect = messagesRef.current.getBoundingClientRect();
       const messageRect = messageElement.getBoundingClientRect();
-      
-      return (
-        messageRect.top >= containerRect.top &&
-        messageRect.bottom <= containerRect.bottom
-      );
+
+      return messageRect.top >= containerRect.top && messageRect.bottom <= containerRect.bottom;
     }
     return false;
   }, []);
@@ -407,14 +439,14 @@ export function useConversationUI({
   const getVisibleMessages = useCallback((): string[] => {
     const visibleMessages: string[] = [];
     const messageElements = document.querySelectorAll('[data-message-id]');
-    
-    messageElements.forEach(element => {
+
+    messageElements.forEach((element) => {
       const messageId = element.getAttribute('data-message-id');
       if (messageId && isMessageVisible(messageId)) {
         visibleMessages.push(messageId);
       }
     });
-    
+
     return visibleMessages;
   }, [isMessageVisible]);
 
@@ -444,7 +476,7 @@ export function useConversationUI({
   useEffect(() => {
     const handleResize = () => {
       const newLayout = detectLayout();
-      setState(prev => ({ ...prev, layout: newLayout }));
+      setState((prev) => ({ ...prev, layout: newLayout }));
       onLayoutChange?.(newLayout);
     };
 
@@ -469,7 +501,7 @@ export function useConversationUI({
 
       const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      
+
       const isAtBottom = distanceFromBottom < 10;
       const isNearBottom = distanceFromBottom < 100;
       const showScrollButton = !isNearBottom && state.scroll.hasScrolled;

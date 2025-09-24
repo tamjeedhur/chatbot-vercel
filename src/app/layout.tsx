@@ -16,7 +16,7 @@ export default async function RootLayout({
   const theme = await getTheme();
   
   return (
-    <html lang="en" className={theme} suppressHydrationWarning>
+    <html lang="en" className={theme} suppressHydrationWarning style={{overflowX: "hidden"}}>
       <body>
         <ThemeScript />
         <Providers session={session} theme={theme}>

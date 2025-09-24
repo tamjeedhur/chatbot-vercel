@@ -82,5 +82,3 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onDelete, showDe
 };
 
 export default MemberCard;
-
-

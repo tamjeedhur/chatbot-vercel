@@ -139,22 +139,45 @@ export function useMessages({
           conversationId: message.conversationId || conversationId,
         };
 
-        // This block checks if a new, non-optimistic message matches an existing optimistic message (by content).
-        // If so, it replaces the optimistic message with the new confirmed message, removes the optimistic message from tracking,
-        // and updates the lastMessageId. This ensures that once a message is confirmed by the server, it replaces the placeholder.
-        if (!message.isOptimistic && prev.messages.some((m) => m.isOptimistic && m.content === message.content)) {
-          const updatedMessages = prev.messages.map((m) => (m.isOptimistic && m.content === message.content ? enhancedMessage : m));
+        // This block checks if a new, non-optimistic message matches an existing optimistic message.
+        // Priority: Match by ID first, then fall back to content matching only if no IDs are available.
+        // If a match is found, replace the optimistic message with the confirmed message.
+        if (!message.isOptimistic) {
+          const matchingOptimisticMessage = prev.messages.find((m) => {
+            if (!m.isOptimistic) return false;
+            
+            // Primary: Match by ID (_id or messageId)
+            if (enhancedMessage._id && m._id && enhancedMessage._id === m._id) return true;
+            if (enhancedMessage.messageId && m.messageId && enhancedMessage.messageId === m.messageId) return true;
+            
+            // Secondary: Cross-reference different ID fields
+            if (enhancedMessage._id && m.messageId && enhancedMessage._id === m.messageId) return true;
+            if (enhancedMessage.messageId && m._id && enhancedMessage.messageId === m._id) return true;
+            
+            // Fallback: Content matching only when no IDs are available on either message
+            if (!enhancedMessage._id && !enhancedMessage.messageId && !m._id && !m.messageId) {
+              return m.content === enhancedMessage.content;
+            }
+            
+            return false;
+          });
 
-          // Remove the optimistic message from the tracking set, since it's now confirmed
-          if (enhancedMessage._id) {
-            optimisticMessagesRef.current.delete(enhancedMessage._id);
+          if (matchingOptimisticMessage) {
+            const updatedMessages = prev.messages.map((m) => 
+              m === matchingOptimisticMessage ? enhancedMessage : m
+            );
+
+            // Remove the optimistic message from the tracking set, since it's now confirmed
+            if (matchingOptimisticMessage._id) {
+              optimisticMessagesRef.current.delete(matchingOptimisticMessage._id);
+            }
+
+            return {
+              ...prev,
+              messages: updatedMessages,
+              lastMessageId: enhancedMessage._id || null,
+            };
           }
-
-          return {
-            ...prev,
-            messages: updatedMessages,
-            lastMessageId: enhancedMessage._id || null,
-          };
         }
 
         // Add new message

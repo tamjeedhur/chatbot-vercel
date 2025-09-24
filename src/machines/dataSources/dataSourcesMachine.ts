@@ -3,7 +3,7 @@ import {
   Context,
   DataSourcePayload,
   Events,
-  DataSource,
+
   Document,
   DocumentPayload,
   URLProcessPayload,
@@ -11,9 +11,6 @@ import {
   QAPayload,
   SearchPayload,
   AdvancedSearchPayload,
-  DocumentStats,
-  ContentTypeBreakdown,
-  ContentTypeDocumentsResponse,
 } from './types';
 import { API_VERSION } from '@/utils/constants';
 import axiosInstance from '@/lib/axiosInstance';

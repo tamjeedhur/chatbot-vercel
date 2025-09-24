@@ -10,12 +10,15 @@ import {
   ScrapingProgressData,
   AddQuestionsAnswersPayload,
   UpdateQuestionsAnswersPayload,
+  AddTextContentPayload,
 } from './types';
 import { API_VERSION } from '@/utils/constants';
 import axiosInstance from '@/lib/axiosInstance';
 import { toast } from 'sonner';
 import { extractErrorMessage } from '@/utils/utils';
-import { DataSourceDocument } from '@/redux/slices/scrapSlice';
+import { addQuestionsAnswersDocument, DataSourceDocument,  deleteQuestionsAnswersDocument,updateQuestionsAnswersDocument } from '@/redux/slices/scrapSlice';
+import * as dataSourcesSlice from '@/redux/slices/datasourcesSlice';
+import {store} from '@/redux/store';
 
 export const crawlerMachine = setup({
   types: {
@@ -104,6 +107,34 @@ export const crawlerMachine = setup({
         // Extract only the fields that the API expects
         const { documentId, chatbotId, ...updateData } = input;
         const response = await axiosInstance.put(`/api/${API_VERSION}/datasources/chatbots/${input.chatbotId}/qa/${input.documentId}`, updateData);
+        return response.data;
+      } catch (error: any) {
+        const errorMessage = extractErrorMessage(error);
+        throw new Error(errorMessage);
+      }
+    }),
+    addTextContent: fromPromise(async ({ input }: { input: AddTextContentPayload }) => {
+      try {
+        const { chatbotId, ...bodyData } = input;
+        const response = await axiosInstance.post(`/api/${API_VERSION}/datasources/chatbots/${chatbotId}/text`, bodyData);
+        return response.data;
+      } catch (error: any) {
+        const errorMessage = extractErrorMessage(error);
+        throw new Error(errorMessage);
+      }
+    }),
+    deleteTextContent: fromPromise(async ({ input }: { input: { chatbotId: string; documentId: string } }) => {
+      try {
+        const response = await axiosInstance.delete(`/api/${API_VERSION}/datasources/chatbots/${input.chatbotId}/text/${input.documentId}`);
+        return response.data;
+      } catch (error: any) {
+        const errorMessage = extractErrorMessage(error);
+        throw new Error(errorMessage);
+      }
+    }),
+    updateTextContent: fromPromise(async ({ input }: { input: { chatbotId: string; documentId: string; updatedContent: any } }) => {
+      try {
+        const response = await axiosInstance.put(`/api/${API_VERSION}/datasources/chatbots/${input.chatbotId}/text/${input.documentId}`, input.updatedContent);
         return response.data;
       } catch (error: any) {
         const errorMessage = extractErrorMessage(error);
@@ -349,24 +380,41 @@ export const crawlerMachine = setup({
     setJobId: assign({
       currentJobId: ({ event }: any) => event.output.data.jobId,
     }),
-    addQuestionsAnswersDocument: assign({
-      scrapedUrls: ({ context, event }: any) => {
-        const document = event.output.data.document;
-        return [...context.scrapedUrls, document];
+    addQuestionsAnswersDocument: ({ event }: any) => {
+      if (event?.output?.data?.document) {
+        store.dispatch(addQuestionsAnswersDocument(event.output.data.document));
+      }
+    },
+      removeQuestionsAnswersDocument: ({ event }: any) => {
+        if (event?.output?.data?.documentId) {
+          store.dispatch(deleteQuestionsAnswersDocument(event.output.data.documentId));
+        }
       },
-    }),
-    removeQuestionsAnswersDocument: assign({
-      scrapedUrls: ({ context, event }: any) => {
-        const documentId = event.output.data.documentId;
-        return context.scrapedUrls.filter((doc: any) => doc.id !== documentId);
-      },
-    }),
-    updateQuestionsAnswersDocument: assign({
-      scrapedUrls: ({ context, event }: any) => {
-        const document = event.output.data.document;
-        return context.scrapedUrls.map((doc: any) => (doc.id === document.id ? document : doc));
-      },
-    }),
+    updateQuestionsAnswersDocument: ({ event }: any) => {
+      if (event?.output?.data?.document) {
+        store.dispatch(updateQuestionsAnswersDocument(event.output.data.document));
+      }
+    },
+    addTextContent: ({ event }: any) => {
+      if (event?.output?.data?.document) {
+        try {
+         
+          store.dispatch(dataSourcesSlice.addTextContent(event.output.data.document));
+        } catch (error) {
+          console.error('Error dispatching addTextContent:', error);
+        }
+      }
+    },
+    deleteTextContent: ({ event }: any) => {
+      if (event?.output?.data?.documentId) {
+        store.dispatch(dataSourcesSlice.deleteTextContent(event.output.data.documentId));
+      }
+    },
+    updateTextContent: ({ event }: any) => {
+      if (event?.output?.data?.document) {
+        store.dispatch(dataSourcesSlice.updateTextContent(event.output.data.document));
+      }
+    },
     // SSE Actions
     setSSEConnected: assign({
       sseConnected: true,
@@ -485,6 +533,24 @@ export const crawlerMachine = setup({
         },
         UPDATE_QUESTIONS_ANSWERS_DOCUMENT: {
           target: 'updatingQuestionsAnswersDocument',
+          actions: assign({
+            isLoading: () => true,
+          }),
+        },
+        ADD_TEXT_CONTENT: {
+          target: 'addingTextContent',
+          actions: assign({
+            isLoading: () => true,
+          }),
+        },
+        DELETE_TEXT_CONTENT: {
+          target: 'deletingTextContent',
+          actions: assign({
+            isLoading: () => true,
+          }),
+        },
+        UPDATE_TEXT_CONTENT: {
+          target: 'updatingTextContent',
           actions: assign({
             isLoading: () => true,
           }),
@@ -656,6 +722,48 @@ export const crawlerMachine = setup({
         onDone: {
           target: 'success',
           actions: ['updateQuestionsAnswersDocument', 'showSuccessToast'],
+        },
+        onError: {
+          target: 'error',
+          actions: ['setError', 'showErrorToast'],
+        },
+      },
+    },
+    addingTextContent: {
+      invoke: {
+        src: 'addTextContent',
+        input: ({ event }: any) => event.payload,
+        onDone: {
+          target: 'success',
+          actions: ['addTextContent', 'showSuccessToast'],
+        },
+        onError: {
+          target: 'error',
+          actions: ['setError', 'showErrorToast'],
+        },
+      },
+    },
+    deletingTextContent: {
+      invoke: {
+        src: 'deleteTextContent',
+        input: ({ event }: any) => event.payload,
+        onDone: {
+          target: 'success',
+          actions: ['deleteTextContent', 'showSuccessToast'],
+        },
+        onError: {
+          target: 'error',
+          actions: ['setError', 'showErrorToast'],
+        },
+      },
+    },
+    updatingTextContent: {
+      invoke: {
+        src: 'updateTextContent',
+        input: ({ event }: any) => event.payload,
+        onDone: {
+          target: 'success',
+          actions: ['updateTextContent', 'showSuccessToast'],
         },
         onError: {
           target: 'error',

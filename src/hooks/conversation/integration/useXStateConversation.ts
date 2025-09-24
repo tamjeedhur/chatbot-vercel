@@ -113,24 +113,25 @@ export function useXStateConversation({
       return;
     }
 
-   
-    
-
     const handleMessage = (data: any) => {
-
       // Send the message to XState machine for processing
-      
       send({ type: 'SOCKET_MESSAGE', data });
-      
     };
 
-    // Bind the message event listener
+    const handleNewConversation = (data: any) => {
+      console.log('🔌 Received new_conversation event:', data);
+      // Send the new conversation event to XState machine for processing
+      send({ type: 'SOCKET_NEW_CONVERSATION', data });
+    };
+
+    // Bind the event listeners
     socket.on('message', handleMessage);
-    
+    socket.on('new_conversation', handleNewConversation);
 
     // Cleanup function
     return () => {
       socket.off('message', handleMessage);
+      socket.off('new_conversation', handleNewConversation);
     };
   }, [socket, enableRealTime, send]);
 

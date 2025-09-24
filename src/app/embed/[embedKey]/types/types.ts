@@ -9,6 +9,8 @@ export interface ChatMessage {
   sender?: 'user' | 'ai' | 'agent';
   conversationId?: string;
   reasoning?: string;
+  isClientOriginated?: boolean; // Flag to identify client-originated messages
+  isStreaming?: boolean; // Flag to indicate if message is currently streaming
   tools?: Array<{
     type: string;
     state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error';

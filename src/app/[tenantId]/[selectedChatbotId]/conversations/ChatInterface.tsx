@@ -1,16 +1,15 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { Send, Bot, Phone, Video, Info, MoreVertical, Star, Archive, Trash2, Paperclip, Smile, MessageCircle } from 'lucide-react';
-import { useConversation, useTypingState } from './ModernConversationProvider';
-import { formatRelativeTime } from '@/utils/dateUtils';
+import { useConversation, useTypingState, useConversationSocket } from './ModernConversationProvider';
+import {  formatRelativeTimeSSR } from '@/utils/dateUtils';
 import { EmptyState } from '@/components/ui/empty-state';
 
 const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
-  const [state, send, conversationService] = useConversation();
-  const { isTyping, participants, getTypingDisplayText, handleTypingChange } = useTypingState();
-  
-
-
+  const [state, send] = useConversation();
+  const { isTyping, participants, getTypingDisplayText } = useTypingState();
+  const { socket, emit } = useConversationSocket();
+  const [isHydrated, setIsHydrated] = useState(false);
   // Extract selectedConversation from state context
   const selectedConversation = state.context.selectedConversation;
   // Local message state to prevent global re-renders
@@ -18,6 +17,7 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get pagination state from XState machine
   const { loadingMoreMessages, hasMoreMessages } = state.context;
@@ -37,26 +37,44 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
     return colors[index];
   };
 
-  // Format message timestamp
+  // Format message timestamp with hydration-safe rendering
   const formatMessageTimestamp = (timestamp: Date | string | number) => {
     if (typeof timestamp === 'number') {
-      return formatRelativeTime(new Date(timestamp));
+      return formatRelativeTimeSSR(new Date(timestamp), isHydrated);
     }
-    return formatRelativeTime(timestamp);
+    return formatRelativeTimeSSR(timestamp, isHydrated);
   };
+
+  // Set hydration state after component mounts
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  // Cleanup typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      // Send stop typing event on cleanup
+      if (socket && selectedConversation) {
+        socket.emit('typing', {
+          conversationId: selectedConversation.conversationId || selectedConversation._id,
+          isTyping: false,
+          sender: 'agent'
+        });
+      }
+    };
+  }, [socket, selectedConversation]);
 
   // Handle scroll up to load more messages
   const handleScroll = useCallback(() => {
     if (!messagesContainerRef.current || state.context.loading || loadingMoreMessages || !hasMoreMessages) return;
-
     const { scrollTop } = messagesContainerRef.current;
-
-    // Load more messages when user scrolls to top
     if (scrollTop <= 50) {
-      // Use conversationId (UUID) instead of _id (ObjectId) to match socket events
       const conversationId = selectedConversation?.conversationId || selectedConversation?._id;
       if (conversationId) {
-        console.log('🔤 Loading more messages for conversationId:', conversationId);
+       
         send({
           type: 'LOAD_MORE_MESSAGES',
           conversationId: conversationId,
@@ -76,10 +94,71 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
 
   const handleSend = (msg?: string) => {
     const textToSend = msg || message;
-    if (textToSend.trim()) {
+    if (textToSend.trim() && socket && selectedConversation) {
+      socket.emit('send-message', { 
+        content: textToSend,
+        sender: 'agent',
+        conversationId: selectedConversation.conversationId || selectedConversation._id 
+      });
       setMessage('');
+      
+      // Stop typing indicator when sending message
+      if (socket && selectedConversation) {
+        socket.emit('typing', {
+          conversationId: selectedConversation.conversationId || selectedConversation._id,
+          isTyping: false,
+          sender: 'agent'
+        });
+      }
+      
+      // Clear typing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
     }
   };
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setMessage(value);
+
+    // Early return if no socket or conversation
+    if (!socket || !selectedConversation) return;
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    if (value.trim()) {
+      // Emit typing event with agent as sender
+      socket.emit('typing', {
+        conversationId: selectedConversation.conversationId || selectedConversation._id,
+        isTyping: true,
+        sender: 'agent'
+      });
+
+      // Set timeout to stop typing after inactivity (1.5 seconds)
+      typingTimeoutRef.current = setTimeout(() => {
+        if (socket && selectedConversation) {
+          socket.emit('typing', {
+            conversationId: selectedConversation.conversationId || selectedConversation._id,
+            isTyping: false,
+            sender: 'agent'
+          });
+        }
+        typingTimeoutRef.current = null;
+      }, 1500);
+    } else {
+      // Empty input - stop typing immediately
+      socket.emit('typing', {
+        conversationId: selectedConversation.conversationId || selectedConversation._id,
+        isTyping: false,
+        sender: 'agent'
+      });
+    }
+  }, [socket, selectedConversation]);
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -111,6 +190,7 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
             id: msg.id || msg._id || msg.messageId || Math.random().toString(),
             content: msg.message || msg.content || msg.text || msg.body,
             isUser: msg.sender === 'user',
+            isStreaming: msg.isStreaming || false, // ✅ Include streaming state
             timestamp:
               msg.date || msg.timestamp || msg.createdAt
                 ? formatMessageTimestamp(new Date(msg.date || msg.timestamp || msg.createdAt).getTime())
@@ -118,6 +198,74 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
           }))
         : [],
   };
+
+  // ✅ Local typing state - only set to false when rag-stream-chunk event occurs
+  const [localTypingState, setLocalTypingState] = useState({ isTyping: false });
+  const [localTypingText, setLocalTypingText] = useState('');
+  const [provisionalMessage, setProvisionalMessage] = useState<any>(null);
+  const hasStreamingMessage = selectedConv.messages.some((msg: any) => !msg.isUser && msg.isStreaming);
+  
+  useEffect(() => {
+    if (isTyping) {
+      setLocalTypingState({ isTyping: true });
+      // Set the typing text based on who's typing
+      const aiParticipants = participants.filter((p: any) => p.type === 'ai');
+      const userParticipants = participants.filter((p: any) => p.type === 'user');
+      const agentParticipants = participants.filter((p: any) => p.type === 'agent');
+      
+      if (aiParticipants.length > 0) {
+        setLocalTypingText('AI assistant is typing...');
+      } else {
+        setLocalTypingText(getTypingDisplayText());
+      }
+    }
+  }, [isTyping, participants, getTypingDisplayText]);
+  
+  // Listen for stream chunk events to create provisional message immediately
+  useEffect(() => {
+    if (!socket) return;
+    
+    const handleStreamChunk = (data: any) => {
+      const { conversationId, chunk } = data;
+      
+      // Only handle events for current conversation
+      if (selectedConversation?.conversationId !== conversationId) return;
+      
+      // If no streaming message exists yet, create provisional one immediately
+      if (!hasStreamingMessage && !provisionalMessage) {
+        const provisional = {
+          id: `provisional-${Date.now()}`,
+          content: chunk,
+          isUser: false,
+          isStreaming: true,
+          timestamp: 'now',
+        };
+        setProvisionalMessage(provisional);
+        // ✅ Clear typing indicator now that streaming content has started (exact same as embed widget)
+        setLocalTypingState({ isTyping: false });
+      } else if (provisionalMessage) {
+        // Update provisional message content
+        setProvisionalMessage((prev: any) => prev ? {
+          ...prev,
+          content: prev.content + chunk
+        } : null);
+      }
+    };
+    
+    socket.on('rag-stream-chunk', handleStreamChunk);
+    
+    return () => {
+      socket.off('rag-stream-chunk', handleStreamChunk);
+    };
+  }, [socket, selectedConversation?.conversationId, hasStreamingMessage, provisionalMessage]);
+  
+  // Clear provisional message when real streaming message appears
+  useEffect(() => {
+    if (hasStreamingMessage && provisionalMessage) {
+      setProvisionalMessage(null);
+    }
+  }, [hasStreamingMessage, provisionalMessage]);
+  
 
   return (
     <div className='flex-1 flex flex-col h-full'>
@@ -220,15 +368,28 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
             )}
 
             {/* Messages */}
-            {selectedConv.messages.length > 0 ? (
-              selectedConv.messages.map((message: any) => (
+            {(selectedConv.messages.length > 0 || provisionalMessage) ? (
+              [...selectedConv.messages, ...(provisionalMessage && !hasStreamingMessage ? [provisionalMessage] : [])].map((message: any) => (
                 <div key={message.id} className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
                       message.isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'
                     }`}>
-                    <p className='text-sm'>{message.content}</p>
-                    <p className={`text-xs mt-1 ${message.isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>{message.timestamp}</p>
+                    <p className='text-sm'>
+                      {message.content}
+                      {/* Show streaming indicator for AI messages that are currently streaming */}
+                      {!message.isUser && message.isStreaming && (
+                        <span className='inline-block ml-1'>
+                          <span className='inline-block w-1 h-1 bg-current rounded-full animate-pulse'></span>
+                        </span>
+                      )}
+                    </p>
+                    <p className={`text-xs mt-1 ${message.isUser ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
+                      {message.timestamp}
+                      {!message.isUser && message.isStreaming && (
+                        <span className='ml-2 text-xs opacity-70'>streaming...</span>
+                      )}
+                    </p>
                   </div>
                 </div>
               ))
@@ -245,7 +406,7 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
             )}
 
             {/* Typing Indicators */}
-            {isTyping && (
+            {localTypingState.isTyping && (
               <div className='flex justify-start'>
                 <div className='max-w-xs lg:max-w-md px-4 py-2 rounded-lg bg-secondary text-secondary-foreground'>
                   <p className='text-sm'>
@@ -258,7 +419,7 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
                         className='inline-block w-2 h-2 bg-muted-foreground rounded-full animate-bounce'
                         style={{ animationDelay: '0.2s' }}></span>
                       <span className='text-muted-foreground'>
-                        {getTypingDisplayText()}
+                        {localTypingText}
                       </span>
                     </span>
                   </p>
@@ -279,16 +440,7 @@ const ChatInterface = memo(({ selectedChatbot }: { selectedChatbot: any }) => {
                 <input
                   type='text'
                   value={message}
-                  onChange={(e) => {
-                    setMessage(e.target.value);
-                    console.log('🔤 Input change detected:', e.target.value);
-                    // Trigger typing indicators
-                    if (e.target.value.trim()) {
-                      handleTypingChange(true);
-                    } else {
-                      handleTypingChange(false);
-                    }
-                  }}
+                  onChange={handleInputChange}
                   onKeyPress={handleKeyPress}
                   placeholder='Type a message...'
                   className='w-full px-4 py-2 border border-input rounded-full focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent bg-background text-foreground'

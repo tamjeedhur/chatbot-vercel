@@ -52,5 +52,3 @@ export const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({ onInvite
 };
 
 export default InviteMemberDialog;
-
-

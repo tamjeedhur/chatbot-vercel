@@ -74,6 +74,15 @@ export interface UpdateQuestionsAnswersPayload {
   metadata?: object;
 }
 
+export interface AddTextContentPayload {
+  title: string;
+  content: string;
+  category?: string;
+  tags?: string[];
+  metadata?: object;
+  chatbotId: string;
+}
+
 export interface CrawlerContext {
   error: string | null;
   crawlerResponse: any;
@@ -105,6 +114,9 @@ export type CrawlerEvents =
   | { type: 'ADD_QUESTIONS_ANSWERS_DOCUMENT'; payload: AddQuestionsAnswersPayload }
   | { type: 'DELETE_QUESTIONS_ANSWERS_DOCUMENT'; payload: { documentId: string; chatbotId: string } }
   | { type: 'UPDATE_QUESTIONS_ANSWERS_DOCUMENT'; payload: UpdateQuestionsAnswersPayload }
+  | { type: 'ADD_TEXT_CONTENT'; payload: AddTextContentPayload }
+  | { type: 'DELETE_TEXT_CONTENT'; payload: { chatbotId: string; documentId: string } }
+  | { type: 'UPDATE_TEXT_CONTENT'; payload: { chatbotId: string; documentId: string; updatedContent: any } }
   // SSE Events
   | { type: 'SSE_CONNECT'; payload: { jobId: string; accessToken: string; tenantId: string } }
   | { type: 'SSE_DISCONNECT' }

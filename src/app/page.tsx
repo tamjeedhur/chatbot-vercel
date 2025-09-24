@@ -11,6 +11,8 @@ export default function Home() {
         alignItems: "center",
         width: "100%",
         justifyContent: "center",
+        overflowX: "hidden",
+        maxWidth: "100vw",
       }}
     >
       <MainPage />

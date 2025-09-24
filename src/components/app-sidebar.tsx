@@ -3,14 +3,10 @@
 import * as React from "react";
 import {
   Bot,
-  Settings2,
   LoaderPinwheel,
   MessageSquareCode,
   MonitorCog,
   Terminal,
-  GalleryVerticalEnd,
-  AudioWaveform,
-  Command,
   BookText,
   CircleGauge,
   Receipt,
@@ -48,23 +44,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       email: "zohaib.hassan@codeanalytics.us",
       avatar: "/favicon.png",
     },
-    teams: [
-      {
-        name: "Sales ChatBot",
-        logo: GalleryVerticalEnd,
-        plan: "Enterprise",
-      },
-      {
-        name: "Fashion Chatbot",
-        logo: AudioWaveform,
-        plan: "Startup",
-      },
-      {
-        name: "Code Chatbot",
-        logo: Command,
-        plan: "Free",
-      },
-    ],
     navMain: [
       {
         title: "Dashboard",
@@ -223,7 +202,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       className="bg-sidebar-background ring-0 focus:ring-0 !border-0"
     >
       <SidebarHeader className="bg-sidebar-background">
-        <TeamSwitcher teams={data.teams} />
+        <TeamSwitcher  />
       </SidebarHeader>
       <SidebarContent className="bg-sidebar-background">
         <NavMain items={data.navMain} />

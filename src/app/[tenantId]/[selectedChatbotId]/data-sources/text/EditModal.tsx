@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
-import { TextContent } from '@/types/interfaces';
+import { TextContent } from '@/redux/slices/datasourcesSlice';
 
 // Dynamically import ReactQuill to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -72,7 +72,7 @@ interface EditModalProps {
   isOpen: boolean;
   onClose: () => void;
   textContent: TextContent | null;
-  onUpdate: (updatedContent: TextContent) => void;
+  onUpdate: (updatedContent: any) => void;
 }
 
 const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, textContent, onUpdate }) => {
@@ -97,11 +97,10 @@ const EditModal: React.FC<EditModalProps> = ({ isOpen, onClose, textContent, onU
   const handleUpdate = () => {
     const contentText = stripHtml(content).trim();
     if (textContent && contentText) {
-      const updatedContent: TextContent = {
-        ...textContent,
+      const updatedContent = {
         title: title.trim() || textContent.title,
         content: content.trim(),
-        wordCount: contentText.split(/\s+/).length,
+        id: textContent.id,
       };
       onUpdate(updatedContent);
       onClose();

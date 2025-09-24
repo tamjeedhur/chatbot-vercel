@@ -109,5 +109,3 @@ export const InviteMemberForm: React.FC<InviteMemberFormProps> = ({ onSubmit, lo
 };
 
 export default InviteMemberForm;
-
-

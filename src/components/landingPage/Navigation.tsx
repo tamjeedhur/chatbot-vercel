@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-import Link from "next/link";
+
 import { useRouter } from "next/navigation";
 
 export function Navigation() {
@@ -19,9 +19,9 @@ export function Navigation() {
         <div className="flex justify-between items-center h-20">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-cyan-500 rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">AI</span>
+              <span className="text-white font-bold text-lg">CA</span>
             </div>
-            <span className="text-white font-bold text-2xl">Support AI</span>
+            <span className="text-white font-bold text-2xl">ChatAgent</span>
           </div>
           
           <div className="hidden md:flex items-center space-x-8">
