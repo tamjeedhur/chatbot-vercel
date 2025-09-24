@@ -1,5 +1,5 @@
 'use client';
-import React, { useState , useEffect} from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, Plus, X, Edit } from 'lucide-react';
 import Link from 'next/link';
 import AdminLayout from '@/components/adminlayout/AdminLayout';
@@ -7,12 +7,11 @@ import EditModal from './EditModal';
 import dynamic from 'next/dynamic';
 import 'react-quill/dist/quill.snow.css';
 import { useChatBotMachineState } from '@/providers/ChatBotMachineProvider';
-import { TextContent ,selectAllTextContent,setAllTextContent} from '@/redux/slices/datasourcesSlice';
+import { TextContent, selectAllTextContent, setAllTextContent } from '@/redux/slices/dataSourcesSlice';
 import { store } from '@/redux/store';
 import { useSelector } from 'react-redux';
 import { useMachine } from '@xstate/react';
 import { crawlerMachine } from '@/machines/crawlerMachine/crawlerMachine';
-
 
 // Dynamically import ReactQuill to avoid SSR issues
 const ReactQuill = dynamic(() => import('react-quill'), { ssr: false });
@@ -88,8 +87,6 @@ const TextContentDataSource: React.FC<TextContentDataSourceProps> = ({ allTextCo
   const [editingContent, setEditingContent] = useState<TextContent | null>(null);
   const savedContent = useSelector(selectAllTextContent);
 
-
-
   useEffect(() => {
     if (allTextContent && allTextContent.length > 0) {
       store.dispatch(setAllTextContent(allTextContent));
@@ -102,7 +99,7 @@ const TextContentDataSource: React.FC<TextContentDataSourceProps> = ({ allTextCo
     tmp.innerHTML = html;
     return tmp.textContent || tmp.innerText || '';
   };
-  
+
   const handleSaveContent = () => {
     sendCrawler({
       type: 'ADD_TEXT_CONTENT',
@@ -110,13 +107,13 @@ const TextContentDataSource: React.FC<TextContentDataSourceProps> = ({ allTextCo
         chatbotId: state.context.selectedChatbot?._id as string,
         title: title,
         content: textContent,
-        metadata:{
-            author:state.context.userId
-        }
+        metadata: {
+          author: state.context.userId,
+        },
       },
     });
-      setTitle('');
-      setTextContent('');
+    setTitle('');
+    setTextContent('');
   };
 
   const handleEditContent = (content: TextContent) => {
@@ -125,15 +122,15 @@ const TextContentDataSource: React.FC<TextContentDataSourceProps> = ({ allTextCo
   };
 
   const handleUpdateContent = (updatedContent: any) => {
-   console.log(updatedContent,"updatedContent");
-   sendCrawler({
-    type: 'UPDATE_TEXT_CONTENT',
-    payload: {
-      chatbotId: state.context.selectedChatbot?._id as string,
-      documentId: updatedContent.id,
-      updatedContent: updatedContent,
-    },
-   });
+    console.log(updatedContent, 'updatedContent');
+    sendCrawler({
+      type: 'UPDATE_TEXT_CONTENT',
+      payload: {
+        chatbotId: state.context.selectedChatbot?._id as string,
+        documentId: updatedContent.id,
+        updatedContent: updatedContent,
+      },
+    });
   };
 
   const handleRemoveContent = (id: string) => {

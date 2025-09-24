@@ -16,9 +16,14 @@ import { API_VERSION } from '@/utils/constants';
 import axiosInstance from '@/lib/axiosInstance';
 import { toast } from 'sonner';
 import { extractErrorMessage } from '@/utils/utils';
-import { addQuestionsAnswersDocument, DataSourceDocument,  deleteQuestionsAnswersDocument,updateQuestionsAnswersDocument } from '@/redux/slices/scrapSlice';
-import * as dataSourcesSlice from '@/redux/slices/datasourcesSlice';
-import {store} from '@/redux/store';
+import {
+  addQuestionsAnswersDocument,
+  DataSourceDocument,
+  deleteQuestionsAnswersDocument,
+  updateQuestionsAnswersDocument,
+} from '@/redux/slices/scrapSlice';
+import * as dataSourcesSlice from '@/redux/slices/dataSourcesSlice';
+import { store } from '@/redux/store';
 
 export const crawlerMachine = setup({
   types: {
@@ -134,7 +139,10 @@ export const crawlerMachine = setup({
     }),
     updateTextContent: fromPromise(async ({ input }: { input: { chatbotId: string; documentId: string; updatedContent: any } }) => {
       try {
-        const response = await axiosInstance.put(`/api/${API_VERSION}/datasources/chatbots/${input.chatbotId}/text/${input.documentId}`, input.updatedContent);
+        const response = await axiosInstance.put(
+          `/api/${API_VERSION}/datasources/chatbots/${input.chatbotId}/text/${input.documentId}`,
+          input.updatedContent
+        );
         return response.data;
       } catch (error: any) {
         const errorMessage = extractErrorMessage(error);
@@ -385,11 +393,11 @@ export const crawlerMachine = setup({
         store.dispatch(addQuestionsAnswersDocument(event.output.data.document));
       }
     },
-      removeQuestionsAnswersDocument: ({ event }: any) => {
-        if (event?.output?.data?.documentId) {
-          store.dispatch(deleteQuestionsAnswersDocument(event.output.data.documentId));
-        }
-      },
+    removeQuestionsAnswersDocument: ({ event }: any) => {
+      if (event?.output?.data?.documentId) {
+        store.dispatch(deleteQuestionsAnswersDocument(event.output.data.documentId));
+      }
+    },
     updateQuestionsAnswersDocument: ({ event }: any) => {
       if (event?.output?.data?.document) {
         store.dispatch(updateQuestionsAnswersDocument(event.output.data.document));
@@ -398,7 +406,6 @@ export const crawlerMachine = setup({
     addTextContent: ({ event }: any) => {
       if (event?.output?.data?.document) {
         try {
-         
           store.dispatch(dataSourcesSlice.addTextContent(event.output.data.document));
         } catch (error) {
           console.error('Error dispatching addTextContent:', error);

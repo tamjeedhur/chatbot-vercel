@@ -4,7 +4,7 @@ import userReducer from './slices/userSlice';
 import chatbotReducer from './slices/chatbotSlice';
 import tenantReducer from './slices/tenantSlice';
 import scrapReducer from './slices/scrapSlice';
-import dataSourcesReducer from './slices/datasourcesSlice';
+import dataSourcesReducer from './slices/dataSourcesSlice';
 
 export const makeStore = () => {
   const rootReducer = {
