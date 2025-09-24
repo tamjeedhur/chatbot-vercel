@@ -67,10 +67,10 @@ export default async function TenantLayout({
       selectedChatbot={selectedChatbot || undefined}
     >
       <TenantMachineProvider>
-      <ChatBotMachineProvider>
-        {children}
-        <Toaster richColors position='bottom-right' />
-      </ChatBotMachineProvider>
+        <ChatBotMachineProvider>
+          {children}
+          <Toaster richColors position='bottom-right' />
+        </ChatBotMachineProvider>
       </TenantMachineProvider>
     </SessionWrapper>
   );

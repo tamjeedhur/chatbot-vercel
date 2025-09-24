@@ -1,13 +1,6 @@
 {
-  "functions": {
-    "src/pages/api/**/*.ts": {
-      "maxDuration": 30
-    }
-  },
-  "rewrites": [
-    {
-      "source": "/api/auth/(.*)",
-      "destination": "/api/auth/$1"
-    }
-  ]
+  "framework": "nextjs",
+  "buildCommand": "next build",
+  "outputDirectory": ".next",
+  "installCommand": "yarn install"
 }

@@ -9,7 +9,7 @@ import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { BasicConfigurationAndMessagesStep } from './form-setps/BasicConfigurationAndMessagesStep';
 import { AppearanceAndFeaturesStep } from './form-setps/AppearanceAndFeaturesStep';
 import { useChatBotMachineState } from '@/providers/ChatBotMachineProvider';
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const steps = [
   {
@@ -64,10 +64,12 @@ export const MultiStepForm = () => {
   const nextStep = () => formSend({ type: 'NEXT' });
   const prevStep = () => formSend({ type: 'PREV' });
 
-  if (state.matches('success') && state.context.chatbotResponse) {
-    router.push(`/${state.context.tenantId}/${state.context.selectedChatbot?._id}/dashboard`);
-    // TODO: Clear chatbot creation state if needed
-  }
+  useEffect(() => {
+    if (state.matches('success') && state.context.chatbotResponse) {
+      router.push(`/${state.context.tenantId}/${state.context.selectedChatbot?._id}/dashboard`);
+      // TODO: Clear chatbot creation state if needed
+    }
+  }, [state, router]);
 
   const handleSubmit = async () => {
     if (formState.value === 'completed' || state.matches('creatingChatbot')) {

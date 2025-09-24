@@ -1,4 +1,4 @@
-import { createMachine,fromPromise,setup } from "xstate";
+import { fromPromise,setup } from "xstate";
 import { VerifyEmailContext, VerifyEmailEvent } from "./types";
 import axiosInstance from "@/lib/axiosInstance";
 import { API_VERSION } from "@/utils/constants";
