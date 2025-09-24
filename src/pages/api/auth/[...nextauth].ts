@@ -1,7 +1,7 @@
 import NextAuth, { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { CustomUser, CustomSession, CustomToken } from '@/types/interfaces';
+import { CustomUser, CustomSession } from '@/types/interfaces';
 import { API_VERSION } from '@/utils/constants';
 
 // Verify required environment variables
@@ -18,18 +18,6 @@ if (!process.env.NEXTAUTH_URL) {
 // NextAuth configuration with type annotations
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  // Add cookie configuration
-  cookies: {
-    sessionToken: {
-      name: process.env.NODE_ENV === 'production' ? 'next-auth.session-token' : 'next-auth.session-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID as string,
@@ -140,6 +128,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60,
   },
 };
 
