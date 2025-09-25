@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { load } from "cheerio";
 import { NodeHtmlMarkdown } from "node-html-markdown";
 import axios from "axios";
-import md5 from 'md5';
+import crypto from 'crypto';
 
 interface Page {
   url: string;
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
       metadata: {
         url: page.url,
         text: cleanText(page.content),
-        hash: md5(cleanText(page.content)),
+        hash: crypto.createHash('md5').update(cleanText(page.content)).digest('hex'),
         loc: {
           lines: {
             from: 1,

@@ -5,27 +5,23 @@ import { Crawler, Page } from './crawler';
 import { truncateStringByBytes } from '../../utils/truncateString';
 import { SeedOptions } from '@/types/interfaces';
 
-
-
-
 type DocumentSplitter = RecursiveCharacterTextSplitter | MarkdownTextSplitter;
 
-    async function seed(selectedUrls: string[], indexName: string, options: SeedOptions) {
-
-try {
+async function seed(selectedUrls: string[], indexName: string, options: SeedOptions) {
+  try {
     // Initialize the Pinecone client
     const pinecone = await getPineconeClient();
 
     const splitter: DocumentSplitter = new MarkdownTextSplitter({});
 
-    const documents = await new Crawler().crawl(selectedUrls).then((pages: Page[]) => 
-    Promise.all(pages.map((page) => prepareDocument(page, splitter)))
-  );
+    const documents = await new Crawler()
+      .crawl(selectedUrls)
+      .then((pages: Page[]) => Promise.all(pages.map((page) => prepareDocument(page, splitter))));
 
     // Pinecone index
     const index = pinecone && pinecone.Index(indexName);
 
-    const records = documents.flat().map(doc => ({
+    const records = documents.flat().map((doc) => ({
       _id: doc.metadata.hash as string, // Placeholder vector, will be replaced by Pinecone's embedding
       chunk_text: doc.pageContent,
       text: doc.pageContent,
@@ -34,8 +30,7 @@ try {
     await index.upsertRecords(records);
 
     return documents.flat();
-
-} catch (error) {
+  } catch (error) {
     console.error('Error seeding:', error);
     throw error;
   }
@@ -72,18 +67,6 @@ async function prepareDocument(page: Page, splitter: DocumentSplitter): Promise<
 
 export default seed;
 
-
-
-
-
-
-
-
-
-
-
-
-
 // import { getEmbeddings } from '../../utils/embeddings';
 // import { Document, MarkdownTextSplitter, RecursiveCharacterTextSplitter } from '@pinecone-database/doc-splitter';
 // import { utils as PineconeUtils, Vector } from '@pinecone-database/pinecone';
@@ -95,7 +78,7 @@ export default seed;
 // const { chunkedUpsert, createIndexIfNotExists } = PineconeUtils;
 
 // interface SeedOptions {
-//   splittingMethod: string; 
+//   splittingMethod: string;
 //   chunkSize: number;
 //   chunkOverlap: number;
 // }
