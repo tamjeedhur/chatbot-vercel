@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { getPineconeClient } from '../../utils/pinecone';
 import { Crawler, Page } from './crawler';
 import { truncateStringByBytes } from '../../utils/truncateString';
-import { SeedOptions } from '@/types/interfaces';
+import { SeedOptions } from '@/types/interfaces'; 
 
 type DocumentSplitter = RecursiveCharacterTextSplitter | MarkdownTextSplitter;
 
