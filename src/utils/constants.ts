@@ -1,5 +1,5 @@
-export const Server_URL = process.env.SERVER_URL || "http://localhost:3005";
-export const API_VERSION = process.env.API_VERSION || "v1";
+export const Server_URL = process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3005';
+export const API_VERSION = process.env.NEXT_PUBLIC_API_VERSION || 'v1';
 export const MESSAGES_TO_LOAD = 15;
 
 export const gridData = [
