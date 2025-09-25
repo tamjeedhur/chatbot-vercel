@@ -16,7 +16,8 @@ export default async function EmbedPage({ params }: { params: { embedKey: string
   }
 
   try {
-    const apiUrl = process.env.SERVER_URL || (process.env.NODE_ENV === 'production' ? 'https://your-api-domain.com' : 'http://localhost:3005');
+    const apiUrl =
+      process.env.NEXT_PUBLIC_SERVER_URL || (process.env.NODE_ENV === 'production' ? 'https://chatbot-be-production.up.railway.app' : 'http://localhost:3005');
 
     const response = await fetch(`${apiUrl}/api/v1/widget/embed/validate`, {
       method: 'POST',
@@ -154,7 +155,7 @@ export default async function EmbedPage({ params }: { params: { embedKey: string
     };
 
     return (
-      <div className='widget-embed-container h-full w-full bg-white' style={{width: '100%', height: '100%'}}>
+      <div className='widget-embed-container h-full w-full bg-white' style={{ width: '100%', height: '100%' }}>
         <ChatbotComponent config={config} widgetKey={widgetKey} chatbotId={chatbotId} />
       </div>
     );

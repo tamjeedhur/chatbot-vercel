@@ -64,7 +64,7 @@ export const authOptions: NextAuthOptions = {
       try {
         if (user) {
           if (account?.provider === 'google') {
-            const apiUrl = `${process.env.SERVER_URL}/api/${API_VERSION}/auth/oauth/login`;
+            const apiUrl = `${process.env.NEXT_PUBLIC_SERVER_URL}/api/${API_VERSION}/auth/oauth/login`;
             const res = await fetch(apiUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
