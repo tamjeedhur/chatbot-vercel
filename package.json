@@ -117,7 +117,7 @@
     "@types/mongoose": "^5.11.96",
     "@types/node": "^24.1.0",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "autoprefixer": "^10.4.20",
+    "autoprefixer": "^10.4.21",
     "joi": "^17.13.3",
     "mongoose": "^8.16.4",
     "postcss": "^8.5.1",
