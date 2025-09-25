@@ -1,5 +1,5 @@
 import { Document, MarkdownTextSplitter, RecursiveCharacterTextSplitter } from '@pinecone-database/doc-splitter';
-import md5 from 'md5';
+import crypto from 'crypto';
 import { getPineconeClient } from '../../utils/pinecone';
 import { Crawler, Page } from './crawler';
 import { truncateStringByBytes } from '../../utils/truncateString';
@@ -64,7 +64,7 @@ async function prepareDocument(page: Page, splitter: DocumentSplitter): Promise<
       metadata: {
         ...doc.metadata,
         // Create a hash of the document content
-        hash: md5(doc.pageContent),
+        hash: crypto.createHash('md5').update(doc.pageContent).digest('hex'),
       },
     };
   });
@@ -87,7 +87,7 @@ export default seed;
 // import { getEmbeddings } from '../../utils/embeddings';
 // import { Document, MarkdownTextSplitter, RecursiveCharacterTextSplitter } from '@pinecone-database/doc-splitter';
 // import { utils as PineconeUtils, Vector } from '@pinecone-database/pinecone';
-// import md5 from 'md5';
+// import crypto from 'crypto';
 // import { getPineconeClient } from '../../utils/pinecone';
 // import { Crawler, Page } from './crawler';
 // import { truncateStringByBytes } from '../../utils/truncateString';
@@ -193,7 +193,7 @@ export default seed;
 //       metadata: {
 //         ...doc.metadata,
 //         // Create a hash of the document content
-//         hash: md5(doc.pageContent),
+//         hash: crypto.createHash('md5').update(doc.pageContent).digest('hex'),
 //       },
 //     };
 //   });
